@@ -1,65 +1,205 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import Ticker from './components/Ticker';
+import DispatchForm from './components/DispatchForm';
+import Ledger from './components/Ledger';
+import CarbonChart from './components/CarbonChart';
+import AuthScreen from './components/AuthScreen';
+import FleetManager from './components/FleetManager';
+import FleetList from './components/FleetList';
+import { supabase } from './lib/supabaseClient';
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [customVehicles, setCustomVehicles] = useState([]);
+  const [selectedCustomVehicle, setSelectedCustomVehicle] = useState('');
+
+  const [isFleetModalOpen, setIsFleetModalOpen] = useState(false);
+
+  const [distance, setDistance] = useState(100);
+  const [unit, setUnit] = useState('mi');
+  const [estimate, setEstimate] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadUserFleetData = async () => {
+    if (!user) return;
+    try {
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      setProfile(prof);
+
+      // FIXED: Strictly filter the select query to only fetch vehicles where is_active is true from the start
+      const { data: cars } = await supabase
+        .from('user_vehicles')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      setCustomVehicles(cars || []);
+    } catch (err) {
+      console.error('Error fetching fleet rows:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    loadUserFleetData();
+  }, [user]);
+
+  useEffect(() => {
+    async function fetchHistoricalLogs() {
+      try {
+        const { data, error } = await supabase.from('emissions_logs').select('*').order('created_at', { ascending: true });
+        if (error) throw error;
+        if (data) {
+          setHistory(data.map(log => ({ carbon_kg: log.carbon_kg, estimated_at: log.created_at })));
+        }
+      } catch (err) {
+        console.error('Error hydrating historical trends:', err);
+      }
+    }
+    fetchHistoricalLogs();
+  }, []);
+
+  async function handleCalculate(payload) {
+    setLoading(true);
+    setErrorMsg('');
+
+    if (payload.type === 'vehicle') {
+      const selectedCar = customVehicles.find(v => v.id === payload.vehicle_model_id);
+      if (!selectedCar) {
+        setErrorMsg('Please select a valid car from your saved custom vehicles list.');
+        setLoading(false);
+        return;
+      }
+      payload.vehicle_make = selectedCar.make;
+      payload.vehicle_model = selectedCar.model;
+      payload.vehicle_year = selectedCar.year;
+    }
+
+    try {
+      const res = await fetch('http://localhost:4000/api/v1/estimates', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer mock_secret_api_key_abc123', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+
+      const newEstimate = result.data.attributes;
+
+      const { data: insertedRows, error: dbError } = await supabase
+        .from('emissions_logs')
+        .insert([{
+          category_display: payload.type === 'vehicle' ? `Fleet Car (${payload.vehicle_make} ${payload.vehicle_model})` : newEstimate.category_display,
+          carbon_kg: newEstimate.carbon_kg,
+          carbon_g: newEstimate.carbon_g,
+          carbon_mt: newEstimate.carbon_mt,
+          carbon_lb: newEstimate.carbon_lb,
+          raw_payload: { ...newEstimate, ...payload }
+        }])
+        .select();
+
+      if (dbError) throw dbError;
+      const supabaseRowId = insertedRows && insertedRows.length > 0 ? insertedRows.at(0).id : null;
+
+      setEstimate({
+        ...newEstimate,
+        supabase_id: supabaseRowId,
+        category_display: payload.type === 'vehicle' ? `Fleet Car (${payload.vehicle_make} ${payload.vehicle_model})` : newEstimate.category_display
+      });
+
+      setHistory((prev) => [...prev, { carbon_kg: newEstimate.carbon_kg, estimated_at: newEstimate.estimated_at }]);
+
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to process logistics calculation.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!user) {
+    return (
+      <main className="min-h-screen w-full flex items-center justify-center p-4 bg-slate-950 text-slate-100">
+        <Ticker />
+        <AuthScreen onAuthSuccess={() => loadUserFleetData()} />
       </main>
-    </div>
+    );
+  }
+
+  return (
+    <main className="min-h-screen w-full flex flex-col items-center justify-start pt-20 pb-12 px-4 animate-fade-in relative bg-slate-950 text-slate-100">
+      <Ticker />
+
+      <div className="w-full max-w-4xl flex flex-col sm:flex-row justify-between items-start sm:items-center mt-8 mb-4 gap-4 px-1">
+        <div>
+          <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent tracking-tight">EcoRoute Control Workspace</h1>
+          <p className="text-xs text-slate-400 font-semibold uppercase mt-0.5 tracking-wider">Welcome back, {profile?.name || 'User'} • <span className="text-emerald-400">{profile?.company || 'Loading...'}</span></p>
+        </div>
+
+        <div className="flex flex-wrap gap-2.5">
+          <button
+            onClick={() => setIsFleetModalOpen(true)}
+            className="bg-gradient-to-r from-emerald-950/60 to-teal-950/60 hover:from-emerald-900/60 hover:to-teal-900/60 border border-emerald-800 text-xs font-bold text-emerald-400 px-4 py-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center space-x-1.5"
+          >
+            <span>🚗</span> <span>Add Fleet Car</span>
+          </button>
+
+          <a href="/api/backup" download className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-slate-300 px-4 py-2 rounded-xl transition-all shadow-md flex items-center space-x-1.5">
+            <span>📥</span> <span>CSV Backup</span>
+          </a>
+
+          <button onClick={() => supabase.auth.signOut()} className="bg-red-950/40 hover:bg-red-900/60 border border-red-900/60 text-xs font-bold text-red-400 px-4 py-2 rounded-xl transition-all shadow-md cursor-pointer">Sign Out</button>
+        </div>
+      </div>
+
+      <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8 items-start">
+        <DispatchForm
+          distance={distance}
+          setDistance={setDistance}
+          unit={unit}
+          setUnit={setUnit}
+          onSubmit={handleCalculate}
+          loading={loading}
+          errorMsg={errorMsg}
+          customVehicles={customVehicles}
+          selectedCustomVehicle={selectedCustomVehicle}
+          setSelectedCustomVehicle={setSelectedCustomVehicle}
+        />
+
+        <Ledger estimate={estimate} />
+
+        <FleetList
+          customVehicles={customVehicles}
+          onVehicleDeleted={() => loadUserFleetData()}
+        />
+
+        <CarbonChart history={history} />
+      </div>
+
+      <FleetManager
+        user={user}
+        isOpen={isFleetModalOpen}
+        onClose={() => setIsFleetModalOpen(false)}
+        onVehicleAdded={() => loadUserFleetData()}
+      />
+    </main>
   );
 }
