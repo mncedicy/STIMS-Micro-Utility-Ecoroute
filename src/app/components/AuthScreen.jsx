@@ -40,7 +40,7 @@ export default function AuthScreen({ onAuthSuccess }) {
                 // 3. Forgot Password Recovery Overlay Pipeline
                 // Points back to your verified local environment callback domain 
                 const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                    redirectTo: `${process.env.BASE_URL}/update-password`,
+                    redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/update-password`,
                 });
                 if (error) throw error;
                 setMsg({
