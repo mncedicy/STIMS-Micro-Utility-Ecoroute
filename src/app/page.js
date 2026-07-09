@@ -93,7 +93,7 @@ export default function Home() {
     }
 
     try {
-      const res = await fetch('http://localhost:4000/api/v1/estimates', {
+      const res = await fetch(process.env.CARBON_INTERFACE_URL, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer mock_secret_api_key_abc123', 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
