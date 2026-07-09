@@ -1,4 +1,5 @@
 import "./globals.css";
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata = {
   title: "EcoRoute - Carbon Tracking Logistics",
@@ -10,6 +11,8 @@ export default function RootLayout({ children }) {
     <html lang="en" className="dark" style={{ colorScheme: "dark" }}>
       <body>
         {children}
+        <Analytics />
+
       </body>
     </html>
   );
