@@ -1,23 +1,26 @@
+// src/app/api/pdf/[id]/route.js
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { generateCertificateHtml } from '../../../lib/certificateTemplate'; // Import the template
+import { generateCertificateHtml } from '../../../lib/certificateTemplate';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+export const dynamic = 'force-dynamic';
 
 export async function GET(request, { params }) {
     const resolvedParams = await params;
     const { id } = resolvedParams;
 
+    const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
     try {
-        // 1. Fetch specific compliance log record from Supabase
-        const { data: log, error } = await supabase
-            .from('emissions_logs')
+        // 1. Fetch compliance log record from our updated ecoroute_emissions_logs table
+        const { data: log, error } = await supabaseAdmin
+            .from('ecoroute_emissions_logs')
             .select('*')
             .eq('id', id)
-            .single();
+            .maybeSingle();
 
         if (error || !log) {
             return new NextResponse(
@@ -29,10 +32,8 @@ export async function GET(request, { params }) {
             );
         }
 
-        // 2. Generate the visual layout html string using the template utility
         const htmlContent = generateCertificateHtml(log);
 
-        // 3. Return streaming HTML document directly back to the active browser view
         return new NextResponse(htmlContent, {
             status: 200,
             headers: {

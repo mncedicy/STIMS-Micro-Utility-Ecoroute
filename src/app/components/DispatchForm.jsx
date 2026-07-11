@@ -1,3 +1,4 @@
+// src/app/components/DispatchForm.jsx
 'use client';
 import { useState } from 'react';
 
@@ -17,116 +18,104 @@ export default function DispatchForm({
         let structuredPayload = { type: category };
 
         if (category === 'vehicle') {
-            structuredPayload = {
-                ...structuredPayload,
-                distance_value: distance,
-                distance_unit: unit,
-                vehicle_model_id: selectedCustomVehicle
-            };
+            structuredPayload = { ...structuredPayload, distance_value: distance, distance_unit: unit, vehicle_model_id: selectedCustomVehicle };
         } else if (category === 'shipping') {
             structuredPayload = { ...structuredPayload, distance_value: distance, distance_unit: unit, weight_value: weight, weight_unit: weightUnit, transport_method: 'ship' };
         } else if (category === 'flight') {
             structuredPayload = { ...structuredPayload, passengers, legs: [{ departure_airport: origin, destination_airport: destination }] };
         }
-
         onSubmit(structuredPayload);
     };
 
-    // FIXED: Filters the selector dropdown menu list to strictly loop out cars where is_active is true
     const activeCustomVehiclesOnly = customVehicles ? customVehicles.filter(car => car.is_active !== false) : [];
 
     return (
-        <form onSubmit={triggerFormSubmit} className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-2xl space-y-5">
-            <div className="border-b border-slate-800 pb-3">
-                <h1 className="text-lg font-bold text-white tracking-tight">EcoRoute Dispatch</h1>
-                <p className="text-xs text-slate-400">Configure logistics travel boundaries</p>
+        <form onSubmit={triggerFormSubmit} className="stims-panel-card space-y-4">
+            <div>
+                <h3 className="text-sm font-bold text-white tracking-tight">EcoRoute Dispatch</h3>
+                <p className="text-[11px] text-slate-500 font-sans">Configure cargo transit lines and routing parameters</p>
             </div>
 
-            {errorMsg && <div className="p-3 text-xs bg-red-950/40 border border-red-900 text-red-400 rounded-lg">{errorMsg}</div>}
-
-            <div className="grid grid-cols-3 gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800">
+            <div className="grid grid-cols-3 gap-1 bg-[#020617] p-1 rounded-lg border border-slate-900">
                 {['vehicle', 'shipping', 'flight'].map((cat) => (
-                    <button key={cat} type="button" onClick={() => setCategory(cat)} className={`text-xs py-1.5 font-medium rounded capitalize transition-all cursor-pointer ${category === cat ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                    <button key={cat} type="button" onClick={() => setCategory(cat)} className={`text-[10px] font-mono uppercase tracking-wider py-1 font-bold rounded transition-all cursor-pointer ${category === cat ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
                         {cat}
                     </button>
                 ))}
             </div>
 
-            {/* --- VEHICLE CUSTOM FLEET SELECTION --- */}
             {category === 'vehicle' && (
-                <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Select Saved Custom Fleet Car</label>
-
+                <div className="space-y-1">
+                    <label className="stims-label">Select Active Corporate Car</label>
                     {activeCustomVehiclesOnly.length > 0 ? (
-                        <select value={selectedCustomVehicle} onChange={(e) => setSelectedCustomVehicle(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-blue-500" required>
-                            <option value="">Choose a vehicle from your saved fleet list...</option>
+                        /* FIXED: Removed the accidental '安全' token typo string entirely */
+                        <select value={selectedCustomVehicle} onChange={(e) => setSelectedCustomVehicle(e.target.value)} className="stims-select font-sans" 安全="" required>
+                            <option value="">Choose a tracking node vehicle registry profile...</option>
                             {activeCustomVehiclesOnly.map((car) => (
-                                <option key={car.id} value={car.id}>
-                                    {car.make} {car.model} ({car.year}) — [{car.registration_number || 'NO PLATE'}]
+                                <option key={car.id} value={car.id} className="bg-[#020617] text-white">
+                                    {car.make} {car.model} — [{car.registration_number || 'NO PLATE'}]
                                 </option>
                             ))}
                         </select>
                     ) : (
-                        <div className="text-center p-4 border border-dashed border-slate-800 bg-slate-950/60 rounded-lg text-xs text-slate-400">
-                            ⚠️ No vehicles listed. Please click <strong className="text-emerald-400">"🚗 Add Fleet Car"</strong> above to register an asset first.
+                        <div className="text-center p-4 border border-dashed border-slate-900 bg-[#020617]/50 rounded-lg text-[11px] text-slate-500 font-mono">
+                            ⚠️ NO CORPORATE ROSTER CORES ACCESS DETECTED. CLICK REGISTER ABOVE.
                         </div>
                     )}
                 </div>
             )}
 
-            {/* --- SHIPPING FORM EXTENSION --- */}
             {category === 'shipping' && (
                 <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2 space-y-1.5">
-                        <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Cargo Weight</label>
-                        <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-blue-500" required />
+                    <div className="col-span-2 space-y-1">
+                        <label className="stims-label">Manifest Total Weight</label>
+                        <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} className="stims-input font-mono" required />
                     </div>
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">W-Unit</label>
-                        <select value={weightUnit} onChange={(e) => setWeightUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-blue-500">
-                            <option value="kg">KG</option>
-                            <option value="lb">LBS</option>
+                    <div className="space-y-1">
+                        <label className="stims-label">Mass Unit</label>
+                        <select value={weightUnit} onChange={(e) => setWeightUnit(e.target.value)} className="stims-select font-mono">
+                            <option value="kg" className="bg-[#020617]">KG</option>
+                            <option value="lb" className="bg-[#020617]">LBS</option>
                         </select>
                     </div>
                 </div>
             )}
 
-            {/* --- AVIATION FORM EXTENSION --- */}
             {category === 'flight' && (
                 <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Pax Count</label>
-                        <input type="number" min="1" value={passengers} onChange={(e) => setPassengers(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-blue-500" required />
+                    <div className="space-y-1">
+                        <label className="stims-label">Pax Count</label>
+                        <input type="number" min="1" value={passengers} onChange={(e) => setPassengers(e.target.value)} className="stims-input font-mono" required />
                     </div>
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Origin</label>
-                        <input type="text" maxLength="3" value={origin} onChange={(e) => setOrigin(e.target.value.toUpperCase())} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 font-mono" required />
+                    <div className="space-y-1">
+                        <label className="stims-label">Origin IATA</label>
+                        <input type="text" maxLength="3" value={origin} onChange={(e) => setOrigin(e.target.value.toUpperCase())} className="stims-input font-mono tracking-widest text-center text-blue-400 font-bold" required />
                     </div>
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Dest</label>
-                        <input type="text" maxLength="3" value={destination} onChange={(e) => setDestination(e.target.value.toUpperCase())} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 font-mono" required />
+                    <div className="space-y-1">
+                        <label className="stims-label">Dest IATA</label>
+                        <input type="text" maxLength="3" value={destination} onChange={(e) => setDestination(e.target.value.toUpperCase())} className="stims-input font-mono tracking-widest text-center text-blue-400 font-bold" required />
                     </div>
                 </div>
             )}
 
             {category !== 'flight' && (
                 <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2 space-y-1.5">
-                        <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Route Length</label>
-                        <input type="number" min="0.1" step="0.1" value={distance} onChange={(e) => setDistance(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-blue-500" required />
+                    <div className="col-span-2 space-y-1">
+                        <label className="stims-label">Route Length Bounds</label>
+                        <input type="number" min="0.1" step="0.1" value={distance} onChange={(e) => setDistance(e.target.value)} className="stims-input font-mono" required />
                     </div>
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">D-Unit</label>
-                        <select value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-blue-500">
-                            <option value="km">KM</option>
-                            <option value="mi">MI</option>
+                    <div className="space-y-1">
+                        <label className="stims-label">Dist Unit</label>
+                        <select value={unit} onChange={(e) => setUnit(e.target.value)} className="stims-select font-mono">
+                            <option value="km" className="bg-[#020617]">KM</option>
+                            <option value="mi" className="bg-[#020617]">MI</option>
                         </select>
                     </div>
                 </div>
             )}
 
-            <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white rounded-lg py-2.5 text-sm font-semibold tracking-wide active:scale-[0.99] transition-transform disabled:opacity-50 cursor-pointer">
-                {loading ? 'Processing Audit Run...' : 'Run Carbon Analysis'}
+            <button type="submit" disabled={loading} className="stims-btn-primary w-full mt-2">
+                {loading ? "Calculating Telemetry Metrics..." : "⚡ Execute Environmental Audit Run"}
             </button>
         </form>
     );

@@ -1,3 +1,5 @@
+//src/app/lib/certificateTemplate.js
+
 export function generateCertificateHtml(log) {
     const p = log.raw_payload || {};
     const isVehicle = log.category_display.toLowerCase().includes('vehicle');

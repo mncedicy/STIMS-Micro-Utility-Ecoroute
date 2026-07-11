@@ -1,3 +1,4 @@
+//src/app/components/AuthScreen.jsx
 'use client';
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
