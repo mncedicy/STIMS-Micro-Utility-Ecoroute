@@ -1,166 +1,162 @@
-// src/app/components/FleetManager.jsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { dummyMakes, dummyModelsMap } from '../lib/mockData';
 
 export default function FleetManager({ user, isOpen, onClose, onVehicleAdded }) {
-    const localCatalog = [
-        { id: "toyota-01", name: "Toyota", models: ["Hilux Bakkie", "Corolla", "Quantum Van", "Fortuner"] },
-        { id: "ford-02", name: "Ford", models: ["Ranger Bakkie", "Transit Custom", "Everest"] },
-        { id: "isuzu-03", name: "Isuzu", models: ["D-Max Bakkie", "N-Series Truck"] },
-        { id: "vw-04", name: "Volkswagen", models: ["Caddy Cargo", "Crafter Van", "Polo Vivo"] }
-    ];
-
-    const [selectedMake, setSelectedMake] = useState('');
-    const [availableModels, setAvailableModels] = useState([]);
-    const [selectedModel, setSelectedModel] = useState('');
+    const [makeId, setMakeId] = useState('');
+    const [model, setModel] = useState('');
     const [year, setYear] = useState(new Date().getFullYear());
-    const [regNumber, setRegNumber] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [alertMsg, setAlertMsg] = useState({ type: '', text: '' });
-
-    const currentYear = new Date().getFullYear();
-    const maxYearRange = currentYear + 1;
-    const yearsRange = [];
-    for (let y = maxYearRange; y >= 1990; y--) yearsRange.push(y);
-
-    useEffect(() => {
-        if (!selectedMake) {
-            setAvailableModels([]);
-            setSelectedModel('');
-            return;
-        }
-        const matchedBrand = localCatalog.find(b => b.name === selectedMake);
-        setAvailableModels(matchedBrand ? matchedBrand.models : []);
-        setSelectedModel('');
-    }, [selectedMake]);
-
-    const handleAddVehicle = async (e) => {
-        e.preventDefault();
-        if (!selectedMake || !selectedModel || !regNumber || !user?.id) return;
-
-        setLoading(true);
-        setAlertMsg({ type: '', text: '' });
-        const cleanRegNumber = regNumber.trim().toUpperCase();
-
-        try {
-            // SAFE-GUARD CHECK: Ensure a master profile record exists before adding the vehicle
-            const { data: profileCheck } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            if (!profileCheck) {
-                // Instantly generate the profile link to heal the foreign key link on the fly
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .insert([{
-                        id: user.id,
-                        first_name: user.user_metadata?.first_name || user.user_metadata?.name || user.email.split('@')[0],
-                        surname: user.user_metadata?.surname || '',
-                        company: user.user_metadata?.company || 'Independent Enterprise'
-                    }]);
-
-                if (profileError) throw new Error(`Profile sync layer failed: ${profileError.message}`);
-            }
-
-            // DUPLICATE GATE ROUTE: Check if registration plate is already recorded in active fleets
-            const { data: duplicateCheck, error: checkError } = await supabase
-                .from('ecoroute_vehicles')
-                .select('id, make, model')
-                .eq('user_id', user.id)
-                .eq('registration_number', cleanRegNumber);
-
-            if (checkError) throw checkError;
-
-            if (duplicateCheck && duplicateCheck.length > 0) {
-                const matchingCar = duplicateCheck[0];
-                setAlertMsg({
-                    type: 'error',
-                    text: `⚠️ Duplicate Registration Blocked: Registration Number "${cleanRegNumber}" is already assigned to a ${matchingCar.make} ${matchingCar.model} in your fleet registry.`
-                });
-                setLoading(false);
-                return;
-            }
-
-            // COMMIT VEHICLE RECORD: Safe write against your updated ecoroute_vehicles configuration layout
-            const { error: insertError } = await supabase
-                .from('ecoroute_vehicles')
-                .insert([{
-                    user_id: user.id,
-                    make: selectedMake,
-                    model: selectedModel,
-                    year: Number(year),
-                    registration_number: cleanRegNumber,
-                    carbon_multiplier: 0.23
-                }]);
-
-            if (insertError) throw insertError;
-
-            setSelectedMake('');
-            setSelectedModel('');
-            setRegNumber('');
-            setYear(currentYear);
-            onVehicleAdded();
-            onClose();
-        } catch (err) {
-            setAlertMsg({ type: 'error', text: err.message || 'Database pipeline sync exception.' });
-        } finally {
-            setLoading(false);
-        }
-    };
+    const [registration, setRegistration] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [modalError, setModalError] = useState('');
 
     if (!isOpen) return null;
 
+    const handleMakeChange = (e) => {
+        setMakeId(e.target.value);
+        setModel('');
+    };
+
+    const handleAddAssetSubmit = async (e) => {
+        e.preventDefault();
+        if (!makeId || !model || !year || !registration) {
+            return setModalError('Complete all registry parameters.');
+        }
+
+        setSaving(true);
+        setModalError('');
+
+        const targetMakeObject = dummyMakes.find(m => m.id === makeId);
+        const vehicleMakeName = targetMakeObject ? targetMakeObject.name : makeId;
+
+        try {
+            // MODIFIED: Updated field variable key to registration_number to align with schema properties
+            const { error } = await supabase
+                .from('ecoroute_vehicles')
+                .insert([{
+                    user_id: user.id,
+                    make: vehicleMakeName,
+                    model: model,
+                    year: Number(year),
+                    registration_number: registration.toUpperCase().trim(),
+                    is_active: true
+                }]);
+
+            if (error) throw error;
+
+            setMakeId('');
+            setModel('');
+            setYear(new Date().getFullYear());
+            setRegistration('');
+
+            onVehicleAdded();
+            onClose();
+        } catch (err) {
+            setModalError(err.message || 'Database integration node initialization failure.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const availableModelsList = makeId ? dummyModelsMap[makeId] || [] : [];
+
     return (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5 w-full max-w-md relative">
-                <button onClick={() => { setAlertMsg({ type: '', text: '' }); onClose(); }} className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors cursor-pointer text-sm">✕</button>
-                <div className="border-b border-slate-800 pb-2">
-                    <h2 className="text-base font-bold text-white tracking-tight">Register Fleet Asset</h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Secure registration validation checkpoint</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity animate-fade-in font-mono">
+            <div className="w-full max-w-md p-6 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl relative stims-hover-glow transition-all duration-300">
+
+                <div className="border-b border-slate-800 pb-3 mb-5 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                        <h3 className="text-xs uppercase tracking-widest text-slate-200 font-bold">
+                            INSTANTIATE FLEET TRACKER NODE
+                        </h3>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="text-slate-500 hover:text-slate-300 transition-colors text-xs"
+                    >
+                        [ESC]
+                    </button>
                 </div>
 
-                {alertMsg.text && (
-                    <div className={`p-3 text-xs rounded-lg border ${alertMsg.type === 'error' ? 'bg-red-950/40 border-red-900/60 text-red-400' : 'bg-emerald-950/40 border-emerald-900/60 text-emerald-400'}`}>
-                        {alertMsg.text}
+                {modalError && (
+                    <div className="p-3 mb-4 text-[11px] bg-rose-950/20 border border-rose-900/40 text-rose-400 rounded-md">
+                        ⚠️ COMPLIANCE FAULT: {modalError}
                     </div>
                 )}
 
-                <form onSubmit={handleAddVehicle} className="space-y-4">
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Manufacturer</label>
-                        <select value={selectedMake} onChange={(e) => setSelectedMake(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-blue-500" required>
-                            <option value="">Select maker brand tracking node...</option>
-                            {localCatalog.map((brand) => <option key={brand.id} value={brand.name}>{brand.name}</option>)}
+                <form onSubmit={handleAddAssetSubmit} className="space-y-4 text-xs">
+                    <div>
+                        <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider">VEHICLE REGISTRATION / LICENSE PLATE</label>
+                        <input
+                            type="text"
+                            placeholder="E.G. GP 1234 XY / STIMS ZN"
+                            value={registration}
+                            onChange={(e) => setRegistration(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 placeholder:text-slate-700 uppercase"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider">VEHICLE MANUFACTURER (MAKE)</label>
+                        <select
+                            value={makeId}
+                            onChange={handleMakeChange}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+                            required
+                        >
+                            <option value="">-- SYSTEM SEARCH SPECIFICATION --</option>
+                            {dummyMakes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </select>
                     </div>
 
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Model Variant</label>
-                        <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} disabled={!selectedMake} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-blue-500 disabled:opacity-40" required>
-                            <option value="">Select configuration model...</option>
-                            {availableModels.map((modelName, index) => <option key={index} value={modelName}>{modelName}</option>)}
+                    <div>
+                        <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider">SPECIFIC CLASSIFICATION MODEL</label>
+                        <select
+                            value={model}
+                            onChange={(e) => setModel(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-40"
+                            disabled={!makeId}
+                            required
+                        >
+                            <option value="">-- SELECT VEHICLE MODEL LAYER --</option>
+                            {availableModelsList.map(mod => <option key={mod} value={mod}>{mod}</option>)}
                         </select>
                     </div>
 
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Year Model Production</label>
-                        <select value={year} onChange={(e) => setYear(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-blue-500">
-                            {yearsRange.map((yr) => <option key={yr} value={yr}>{yr}</option>)}
-                        </select>
+                    <div>
+                        <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider">MANUFACTURING YEAR LOG</label>
+                        <input
+                            type="number"
+                            min={1990}
+                            max={new Date().getFullYear() + 1}
+                            value={year}
+                            onChange={(e) => setYear(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+                            required
+                        />
                     </div>
 
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Registration Number / Plate</label>
-                        <input type="text" placeholder="e.g. ND 123-456" value={regNumber} onChange={(e) => setRegNumber(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-blue-500 uppercase" required />
+                    <div className="flex space-x-2 pt-2 border-t border-slate-800/60 mt-6">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-400 py-2 rounded transition-colors uppercase text-[11px] tracking-wider"
+                        >
+                            ABORT
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={saving}
+                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded transition-colors uppercase text-[11px] tracking-wider disabled:opacity-50"
+                        >
+                            {saving ? 'INJECTING ASSET...' : 'COMMIT TO LEDGER'}
+                        </button>
                     </div>
-
-                    <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs py-2.5 rounded-lg transition-transform active:scale-[0.99] cursor-pointer shadow-lg">
-                        {loading ? 'Analyzing Registration Index...' : 'Verify & Add Car to Fleet List'}
-                    </button>
                 </form>
             </div>
         </div>

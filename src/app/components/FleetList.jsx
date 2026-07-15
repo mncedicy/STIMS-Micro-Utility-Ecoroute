@@ -1,76 +1,84 @@
-// src/app/components/FleetList.jsx
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 export default function FleetList({ customVehicles, onVehicleDeleted }) {
-    const [deletingId, setLoadingId] = useState(null);
-    const [optimisticHiddenIds, setOptimisticHiddenIds] = useState([]);
+    const [vehicleToDelete, setVehicleToDelete] = useState(null);
+    const [deleting, setDeleting] = useState(false);
 
-    const handleDelete = async (vehicleId, plateNumber) => {
-        const confirmed = window.confirm(`Are you sure you want to deactivate vehicle [${plateNumber}]?`);
-        if (!confirmed) return;
-
-        setLoadingId(vehicleId);
-        setOptimisticHiddenIds(prev => [...prev, vehicleId]);
-
+    const executeDeleteNode = async () => {
+        if (!vehicleToDelete) return;
+        setDeleting(true);
         try {
-            // Target the updated table layout name ecoroute_vehicles
-            const { error } = await supabase
-                .from('ecoroute_vehicles')
-                .update({ is_active: false })
-                .eq('id', vehicleId);
-
+            const { error } = await supabase.from('ecoroute_vehicles').update({ is_active: false }).eq('id', vehicleToDelete.id);
             if (error) throw error;
+            setVehicleToDelete(null);
             onVehicleDeleted();
         } catch (err) {
-            setOptimisticHiddenIds(prev => prev.filter(id => id !== vehicleId));
-            alert(`Security Write Rejection: ${err.message}`);
+            console.error('Error soft-deleting asset tracking node:', err);
         } finally {
-            setLoadingId(null);
+            setDeleting(false);
         }
     };
 
-    const activeFleetOnly = customVehicles.filter(
-        car => car.is_active !== false && !optimisticHiddenIds.includes(car.id)
-    );
-
     return (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-2xl space-y-4 col-span-1 md:col-span-2">
-            <div className="border-b border-slate-800 pb-3 flex justify-between items-center">
-                <div>
-                    <h2 className="text-sm font-bold text-white tracking-tight">Active Corporate Fleet Profile Registry</h2>
-                    <p className="text-[11px] text-slate-400">Review registered car assets and management tracking tags</p>
-                </div>
-                <span className="text-[10px] font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-400 font-bold">
-                    TOTAL CORES: {activeFleetOnly.length}
-                </span>
+        <div className="p-5 bg-slate-900/40 border border-slate-800 rounded-xl transition-all duration-300 stims-hover-glow relative group font-mono md:col-span-2">
+            <div className="border-b border-slate-800 pb-2 mb-4 flex items-center justify-between">
+                <h3 className="text-xs uppercase tracking-widest text-blue-500 font-bold">ACTIVE FLEET ASSETS REGISTER</h3>
+                <span className="text-[10px] text-slate-500">COUNT: {customVehicles.length}</span>
             </div>
 
-            {activeFleetOnly.length > 0 ? (
-                <div className="grid sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
-                    {activeFleetOnly.map((car) => (
-                        <div key={car.id} className="bg-slate-950 border border-slate-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-slate-700/60 transition-colors group animate-fade-in">
-                            <div className="space-y-1">
-                                <div className="text-xs font-bold text-white flex items-center space-x-1.5">
-                                    <span>🚗</span>
-                                    <span>{car.make} {car.model}</span>
-                                    <span className="text-[10px] text-slate-500 font-normal">({car.year})</span>
-                                </div>
-                                <div className="text-[10px] font-mono text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.5 rounded w-max font-bold">
-                                    {car.registration_number || 'NO PLATE'}
-                                </div>
-                            </div>
-                            <button type="button" disabled={deletingId === car.id} onClick={() => handleDelete(car.id, car.registration_number)} className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[11px] font-medium text-red-400 hover:text-red-300 bg-red-950/20 hover:bg-red-950/50 border border-red-900/40 px-2.5 py-1 rounded-lg transition-all disabled:opacity-40 cursor-pointer">
-                                {deletingId === car.id ? 'Deactivating...' : 'Deactivate'}
-                            </button>
-                        </div>
-                    ))}
+            {customVehicles.length > 0 ? (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left text-slate-300">
+                        <thead>
+                            <tr className="border-b border-slate-900 text-slate-500 text-[10px] uppercase">
+                                <th className="py-2">REGISTRATION</th>
+                                <th className="py-2">MAKE</th>
+                                <th className="py-2">MODEL</th>
+                                <th className="py-2">YEAR</th>
+                                <th className="py-2 text-right">ACTIONS</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-900/60">
+                            {customVehicles.map((vehicle) => (
+                                <tr key={vehicle.id} className="hover:bg-slate-950/30 transition-colors">
+                                    <td className="py-2.5 font-bold text-blue-400 tracking-wider uppercase">{vehicle.registration_number || vehicle.registration || 'N/A'}</td>
+                                    <td className="py-2.5 text-slate-200">{vehicle.make}</td>
+                                    <td className="py-2.5 text-slate-400">{vehicle.model}</td>
+                                    <td className="py-2.5 text-slate-500">{vehicle.year}</td>
+                                    <td className="py-2.5 text-right">
+                                        <button type="button" onClick={() => setVehicleToDelete(vehicle)} className="text-[10px] border border-rose-950/40 hover:border-rose-900 text-rose-500 bg-rose-950/10 px-2 py-0.5 rounded transition-colors">REMOVE</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             ) : (
-                <div className="text-center p-6 border border-dashed border-slate-800 bg-slate-950/40 rounded-xl text-xs text-slate-500">
-                    No active corporate car assets archived.
+                <div className="text-center py-6 text-slate-600 text-xs border border-dashed border-slate-800 rounded-md bg-slate-950/10">NO INSTANTIATED VEHICLE MANAGEMENT NODES CURRENTLY LINKED TO DATABASE.</div>
+            )}
+
+            {/* FIXED: Changed to items-center to secure perfect screen vertical centering */}
+            {vehicleToDelete && (
+                <div className="fixed top-0 left-0 right-0 bottom-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-mono">
+                    <div className="w-full max-w-sm p-5 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl space-y-4 mx-auto stims-hover-glow transition-all duration-300">
+                        <div className="flex items-center space-x-2 border-b border-slate-800 pb-2.5">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                            <h4 className="text-[11px] font-bold text-slate-200 uppercase tracking-widest">DE REGISTRATION AUDIT CONFIRMATION</h4>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                            Are you sure you want to terminate fleet node tracking assets for:
+                            <span className="block mt-2 font-bold text-blue-400 border-l-2 border-blue-500 pl-2 bg-slate-950/40 py-1.5 rounded-r">
+                                [{vehicleToDelete.registration_number || vehicleToDelete.registration || 'N/A'}] {vehicleToDelete.make} {vehicleToDelete.model}
+                            </span>
+                        </p>
+                        <div className="flex space-x-2 pt-2 text-[10px]">
+                            <button type="button" disabled={deleting} onClick={() => setVehicleToDelete(null)} className="flex-1 bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 py-2 rounded text-slate-400 transition-colors uppercase tracking-wider">ABORT ACTION</button>
+                            <button type="button" disabled={deleting} onClick={executeDeleteNode} className="flex-1 bg-rose-950/30 border border-rose-900 text-rose-400 hover:bg-rose-900 hover:text-white font-bold py-2 rounded transition-all uppercase tracking-wider disabled:opacity-50">{deleting ? 'DELETING...' : 'CONFIRM REMOVAL'}</button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
