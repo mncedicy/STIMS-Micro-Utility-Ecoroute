@@ -1,141 +1,122 @@
-# ECOROUTE MASTER DEVELOPMENT DECK & ARCHITECTURE BRIEF
-
-## 1. EXECUTIVE PROJECT OVERVIEW
-EcoRoute (`ecoroute.stims.co.za`) is an enterprise-grade full-stack logistics carbon emissions tracking, audit, and reporting dashboard application tailored for corporate fleet compliance. 
-
-### Critical Infrastructure Context:
-The production third-party service (Carbon Interface) features a broken backend transactional mail server that silently fails with generic 500 errors during email confirmation or password resend attempts. To unblock development, EcoRoute decouples completely from their live infrastructure and maps to a high-fidelity local API simulation engine paired with an independent cloud data persistence layer.
-
----
-
-## 2. SYSTEM ARCHITECTURE & ENVIRONMENT HOOKS
-The system runs on two distinct localized servers communicating across cross-origin boundaries via explicit environmental parameters:
-
-- **Frontend App**: Next.js App Router running on `http://localhost:3000`
-- **Mock Server Engine**: Standalone Node.js Express App running on `http://localhost:4000`
-- **Database Engine**: Supabase (PostgreSQL Cloud Instance + Built-in Go-Auth services)
-
-### Frontend Configuration Profile (`.env.local`):
-```env
-CARBON_INTERFACE_URL=http://localhost:4000/api/v1/estimates
-CARBON_INTERFACE_KEY=mock_secret_api_key_abc123
-NEXT_PUBLIC_SUPABASE_URL=https://supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpX...
-```
-
----
-
-## 3. SUPABASE CLOUD DATABASE LAYOUT (SQL SEED)
-The database utilizes strict PostgreSQL constraints and custom relational mapping rules. To prevent breaking historical data dependencies on analytics charts or compiled compliance certificates, **Soft Deletion** is strictly enforced via an `is_active` boolean switch flag.
-
-```sql
--- Profile Repository linking directly to Supabase Auth UUID strings
-create table profiles (
-  id uuid references auth.users on delete cascade primary key,
-  name text not null,
-  surname text not null,
-  company text not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- Custom Corporate Fleet Asset Table with Multi-Column Unique Index Constraints
-create table user_vehicles (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references profiles(id) on delete cascade not null,
-  make text not null,
-  model text not null,
-  year integer not null,
-  registration_number text not null,
-  is_active boolean default true not null,
-  carbon_multiplier numeric default 0.23 not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  constraint unique_user_registration_plate unique (user_id, registration_number)
-);
-
--- Permanent Environmental Compliance Audit Log Ledger
-create table emissions_logs (
-  id uuid default gen_random_uuid() primary key,
-  category_display text not null,
-  carbon_kg numeric not null,
-  carbon_g numeric not null,
-  carbon_mt numeric not null,
-  carbon_lb numeric not null,
-  raw_payload jsonb not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- Automation Trigger: Seamlessly clone auth.users metadata to public.profiles upon registration
-create or replace function public.handle_new_user()
-returns trigger as \[ begin   insert into public.profiles (id, name, surname, company)   values (     new.id,     coalesce(new.raw_user_meta_data->>'name', 'First'),     coalesce(new.raw_user_meta_data->>'surname', 'Last'),     coalesce(new.raw_user_meta_data->>'company', 'Default Fleet')   );   return new; end; \] language plpgsql security definer;
-
-create or replace trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
-
--- Enable Row Level Security (RLS) policies for user scopes
-alter table profiles enable row level security;
-alter table user_vehicles enable row level security;
-
-create policy "Users can view own profiles" on profiles for select using (auth.uid() = id);
-create policy "Users can view own vehicles" on user_vehicles for select using (auth.uid() = user_id);
-create policy "Users can insert own vehicles" on user_vehicles for insert with check (auth.uid() = user_id);
-create policy "Users can update own vehicles" on user_vehicles for update using (auth.uid() = user_id);
-```
-*Note: The **"Confirm email" provider toggle setting is explicitly turned OFF** inside the Supabase Auth Settings tab to bypass standard email rate limits during local sandbox testing loops.*
-
----
-
-## 4. MOCK API INFRASTRUCTURE (`carbon-mock-server`)
-The simulation backend splits networking routes from server listeners to ensure flawless execution of automated unit tests.
-
-### Entry Launcher (`index.js`):
-```javascript
-const app = require('./server');
-const PORT = 4000;
-app.listen(PORT, () => console.log(`Advanced Logistics Engine online on Port ${PORT}`));
-```
-
-### Core Router (`server.js`):
-Enforces security bearer gates, cross-origin parameters (`cors()`), and computes transport masses dynamically:
-- **`GET /api/v1/vehicle_makes`**: Static catalogue reference array (`Ferrari`, `Toyota`).
-- **`GET /api/v1/vehicle_makes/:id/vehicle_models`**: Returns model specs with safe Corolla fallbacks.
-- **`POST /api/v1/estimates`**: Unified multi-modal calculation endpoint. Processes `vehicle` (custom attributes mapping), `shipping` (maritime ton-km calculation using `0.015` multiplier), and `flight` (aviation passenger-leg algorithm using `150` base factor). Returns nested metrics JSON matching the exact expected corporate structure.
-
-### Automation Testing Tracker (`server.test.js`):
-Executes **5 out of 5 automated Jest / Supertest validations** verification checks covering route tokens, bad payloads, and mathematical transport computations (`npm test`).
-
----
-
-## 5. FRONTEND FILE MAP ARCHITECTURE (`ecoroute/src/`)
-
-### A. Style Sheet Layers (`app/globals.css`)
-Tailwind CSS v4 CSS-first layer file containing custom hardware-accelerated motion assets:
-- **`animate-ticker`**: Infinite, fluid horizontal text track marquee loop for critical fleet notifications.
-- **`animate-fade-in`**: Smooth opacity/transform micro-interaction for entry content overlays.
-
-### B. Dynamic Application Route Handler Layouts (`app/`)
-- **`layout.js`**: Hard-bypasses operating system light preferences by enforcing `className="dark"` and `colorScheme: "dark"` document wrappers on an obsidian canvas grid (`bg-slate-950`).
-- **`lib/supabaseClient.js`**: Global re-usable client initialization link instance.
-- **`lib/certificateTemplate.js`**: Short, clean printable blueprint rendering an immaculate, premium minimalist corporate card template layout—**completely free of ugly JSON, displaying a human-readable Manifest Summary Table**.
-- **`api/pdf/[id]/route.js`**: Server endpoint handler. Uses modern App Router layout async syntax (`await params`), queries rows from Supabase, processes layout variables, and streams clean printable views right inside browser tabs.
-- **`api/backup/route.js`**: Queries `emissions_logs` and outputs comma-separated string streams triggering direct, browser-native CSV file spreadsheet downloads.
-- **`update-password/page.js`**: Captures recovery access tokens sent via forgot password reset links to securely change user credentials.
-- **`page.js`**: Core workspace layout state orchestrator. Manages user account checks, maps state hooks, handles form submissions, and aggregates multi-component splits.
-
-### C. Modular Reusable View Components (`app/components/`)
-- **`Ticker.jsx`**: Scrolling hardware-accelerated logistics alert notice marquee text layer.
-- **`AuthScreen.jsx`**: Secure account creator, corporate login, and sliding forgot password recovery screen template using `resetPasswordForEmail`.
-- **`DispatchForm.jsx`**: Compact form. 100% dependent on custom user fleet assets for vehicle estimations, hiding the select dropdown list and alerting drivers if no cars are registered first.
-- **`Ledger.jsx`**: Visual output monitor parsing multi-modal carbon calculations dynamically, showing custom table entry IDs, and unlocking the printable document anchor button.
-- **`FleetManager.jsx`**: Glassmorphic dashboard popup modal accessed near header backup buttons. Generates production years dynamically (`1990` to `Current Year + 1`) and queries database records to block duplicate license plates.
-- **`FleetList.jsx`**: Grid list displaying active corporate cars with their plate tracking labels. Employs **Optimistic State Updates** to instantly hide deactivated cars before executing `is_active: false` updates.
-- **`CarbonChart.jsx`**: Responsive Recharts area chart line profile that reads database caches live on startup to display cumulative tracking metrics.
-
----
-
-## 6. CODING AND ARCHITECTURAL PROTOCOLS TO ENFORCE
-1. **Never use standard HTML `class`**: Always map to the valid React standard `className`.
-2. **Never break historical data logs**: Never execute destructive hard deletes against the `user_vehicles` table; update the `is_active` flag.
-3. **No global catalog mixups**: The global manufacturer catalog is completely detached from the dispatch selector. Calculations are strictly driven by the custom user vehicles array pool.
-4. **Bypass interpreter bracket bugs**: When extracting the first row index object returned from a Supabase array insertion payload response, always use the native array selector method **`insertedRows.at(0).id`** to guarantee compatibility.
-5. **Always await App Router parameters**: Dynamic route properties (`params`) must be explicitly awaited (`const resolvedParams = await params`) inside server handlers before keys are extracted.
+ STIMS ECO-ROUTE // SYSTEM MASTER BRIEF & FILE SPECIFICATIONS
+This documentation details the structural layout, background operations, database tables, and connection configurations for the EcoRoute Carbon Auditing and Fleet Management platform.
+________________________________________
+📂 1. SYSTEM ROOT FILE DICTIONARY & COMPONENT GRAPH
+The following chart outlines the exact file layout and component trees running inside your active workspace.
+text
+src/
+└── app/
+    ├── favicon.ico                  # Application system tab icon asset
+    ├── globals.css                  # Style layout layer injecting the tech dark theme
+    ├── layout.js                    # Global layout shell wrapping metadata blocks
+    ├── page.js                      # Central router file handling page switching and synchronization
+    │
+    ├── actions/
+    │   ├── checkout.js              # Server Action: Billing configuration pipeline links
+    │   └── email.js                 # Server Action: Converts log profiles into safe uncorrupted attachments
+    │
+    ├── api/
+    │   ├── backup/
+    │   │   └── route.js             # API: Exports entire user logging datasets into raw JSON archives
+    │   ├── checkout/
+    │   │   ├── cancel/
+    │   │   │   └── route.js         # API: Manages subscription plan termination pipelines
+    │   │   └── initialize/
+    │   │       └── route.js         # API: Sets up active Paystack ZAR checking endpoints safely
+    │   ├── estimates/
+    │   │   └── route.js             # API: General endpoint matrix layer for emissions lookups
+    │   ├── pdf/
+    │   │   └── [id]/
+    │   │       └── route.js         # API: Compiles secure, isolated file download parameters via path query IDs
+    │   └── v1/
+    │       ├── estimates/
+    │       │   └── route.js         # API: Enterprise secure Carbon Calculation engine (requires Bearer tokens)
+    │       └── vehicle_makes/
+    │           ├── route.js         # API: Provides lists of vehicle manufacturer tracking indexes
+    │           └── [id]/
+    │               └── vehicle_models/
+    │                   └── route.js # API: Provides vehicle spec variations filtering by manufacturer IDs
+    │
+    ├── components/
+    │   ├── AuthScreen.jsx           # Screen component locking fields for unauthenticated profiles
+    │   ├── CarbonChart.jsx          # Component wrapping history metrics inside timeline trend graphs
+    │   ├── DashboardView.js         # Master Frame: Packages calculation forms, single ledgers, and licensing
+    │   ├── DispatchForm.jsx         # Form section mapping multi-sector input fields (Vehicle, Shipping, Flights)
+    │   ├── ExportModal.js           # Modal: Centers horizontally and vertically on screens, processes direct downloads
+    │   ├── FleetList.jsx            # Dynamic asset ledger register mapping car rows with active action confirm options
+    │   ├── FleetManager.jsx         # Form wrapper modal tracking new vehicle registry data additions
+    │   ├── FleetView.js             # Master Frame: Triggers backup files, manages free tier limits, and loads logs
+    │   ├── Footer.js                # Application navigation footer providing state intercept anchors back home
+    │   ├── Header.jsx               # Greeting panel strip rendering active user details and plan tier levels
+    │   ├── Ledger.jsx               # Calculation results diagnostic component sheet
+    │   ├── LogHistoryDetails.js     # Detail node element managing single card checks and loading the exporter modals
+    │   ├── LogHistoryDropdown.js    # Symmetrical layout headers grouping calendar date query limit selectors
+    │   ├── LogHistoryItem.js        # Scrollable log button checklist element built with custom scrollbar properties
+    │   ├── LogHistoryManager.js     # Shared context container ensuring logs default to the active calendar month bounds
+    │   ├── Navbar.js                # Core header nav handling pulse beacon pulsars and home page leave intercepts
+    │   └── Ticker.jsx               # Scrolling animation notification message banner strip
+    │
+    ├── lib/
+    │   ├── certificateTemplate.js   # Script template layer exporting structured HTML content for text prints
+    │   ├── mockData.js              # Test mock arrays for automotive profiles testing sequences
+    │   └── supabaseClient.js        # Engine script configuring database communication pool keys
+    │
+    └── update-password/
+        └── page.js                  # Operational directory route handling password recovery changes
+Use code with caution.
+________________________________________
+⚙️ 2. TRANSACTIONAL WORKFLOWS & DATA CONSTRAINTS
+A. Dynamic View State Routing (Client Engine)
+•	Instead of running traditional multi-page document requests that drop component values, src/app/page.js utilizes a string hook state switch matrix (activeViewPage) to load individual master frames (DashboardView vs FleetView).
+•	When clicking / EcoRoute or the ecoroute.stims.co.za footer anchor link, click-intercept methods override standard browser behavior to toggle the screen back to the primary workspace safely.
+B. Viewport Modal Centering Properties
+To prevent relative layout containers or css transforms from breaking popup placement on scrolled windows, every dialogue card handles layout centering independently:
+•	Backdrops apply fixed top-0 left-0 right-0 bottom-0 z-[100] flex items-start justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in parameters.
+•	Inner dialog layout cards utilize w-full max-w-sm mt-12 mx-auto styling. This pins them symmetrically to the top-center of the screen window view, with a small margin, rather than centering based on page length.
+C. Quota Access Limit Handshakes
+•	Free Account Restriction Level: Limited to 1 vehicle row item.
+•	Validation Loop: When triggering the creation modal inside FleetView.js, the platform evaluates customVehicles.length. If the registry is filled, it immediately triggers the custom, styled VEHICLE REGISTRY LIMIT popup modal on your screen with an inline payment authorization upgrade button.
+D. File Compilations & Valid Attachment Delivery
+•	Local Printing Engine: Uses dynamic iframe generation to capture isolated table row element branches, apply print layouts, and open browser print controls directly.
+•	Email Attachment Validation: Passing raw layout code files across remote servers can cause email reader errors. The application converts text logs into raw binary byte blocks using TextEncoder(), encodes the bytes into a base64 string, and passes the clean data down to your server action. This attaches it as a valid, uncorrupted .txt documentation report directly through the Resend API channel.
+________________________________________
+🗄️ 3. CORE RELATIONAL DATABASE SCHEMAS
+The storage engine uses PostgreSQL tables through Supabase to store information without using double slashes (//) or underscores (_) inside system label variables.
+Table: profiles
+•	id (uuid, primary key) — References the global user system identification token.
+•	first_name (text) — Name string of the system operator.
+•	surname (text) — Surname string of the system operator.
+•	company (text) — Associated business node label text string.
+Table: user_subscriptions
+•	user_id (uuid, primary key) — References the owner user profile token.
+•	app_id (text) — Application scope selector string (ecoroute).
+•	tier (text) — Access level permission value (free or premium).
+•	status (text) — Billing parameter state tracking values (active or cancelled).
+Table: ecoroute_vehicles
+•	id (uuid, primary key) — Unique automotive tracer code token.
+•	user_id (uuid) — Identifies the creating operational account user profile.
+•	registration_number (text) — License registration plate string value.
+•	make (text) — Automotive manufacturing company brand name label.
+•	model (text) — Specific design series label.
+•	year (integer) — Release year number string.
+•	is_active (boolean) — Logic flag to toggle soft-deletion behavior without dropping history indices.
+Table: ecoroute_emissions_logs
+•	id (uuid, primary key) — Main entry tracer asset code.
+•	vehicle_id (uuid, optional) — Connects history logs to an active car entry in the vehicle table database rows.
+•	category_display (text) — Output identifier string (Holds explicit plate strings for fleet asset records).
+•	carbon_kg (numeric) — Calculated footprint mass output in kilograms.
+•	carbon_g (numeric) — Calculated footprint mass output in grams.
+•	carbon_mt (numeric) — Calculated footprint mass output in metric tons.
+•	carbon_lb (numeric) — Calculated footprint mass output in pounds.
+•	raw_payload (jsonb) — Complete diagnostic object array fields.
+•	created_at (timestamp) — Automated calendar execution tracker date stamp.
+________________________________________
+💎 4. STIMS INTERFACE CSS UTILITY CLASS MATRIX
+The theme prioritizes high scannability over dark slate frames (#020617). To include high-intensity neon effects, apply this CSS utility definition directly to your interface styling sheets:
+css
+/* High-intensity custom neon blue glow shadow utility for cards and active button hovers */
+.stims-hover-glow:hover {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 25px 3px rgba(59, 130, 246, 0.25), inset 0 0 12px 1px rgba(59, 130, 246, 0.1);
+  background-color: rgba(15, 23, 42, 0.9) !important;
+}
