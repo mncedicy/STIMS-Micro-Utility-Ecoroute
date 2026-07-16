@@ -1,7 +1,7 @@
  STIMS ECO-ROUTE // SYSTEM MASTER BRIEF & FILE SPECIFICATIONS
 This documentation details the structural layout, background operations, database tables, and connection configurations for the EcoRoute Carbon Auditing and Fleet Management platform.
 ________________________________________
-📂 1. SYSTEM ROOT FILE DICTIONARY & COMPONENT GRAPH
+📂 1. SYSTEM ROOT FILE DICTIONARY & COMPONENT GRAPH 
 The following chart outlines the exact file layout and component trees running inside your active workspace.
 text
 src/
@@ -69,7 +69,7 @@ ________________________________________
 A. Dynamic View State Routing (Client Engine)
 •	Instead of running traditional multi-page document requests that drop component values, src/app/page.js utilizes a string hook state switch matrix (activeViewPage) to load individual master frames (DashboardView vs FleetView).
 •	When clicking / EcoRoute or the ecoroute.stims.co.za footer anchor link, click-intercept methods override standard browser behavior to toggle the screen back to the primary workspace safely.
-B. Viewport Modal Centering Properties
+B. Viewport Modal Centering Properties.
 To prevent relative layout containers or css transforms from breaking popup placement on scrolled windows, every dialogue card handles layout centering independently:
 •	Backdrops apply fixed top-0 left-0 right-0 bottom-0 z-[100] flex items-start justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in parameters.
 •	Inner dialog layout cards utilize w-full max-w-sm mt-12 mx-auto styling. This pins them symmetrically to the top-center of the screen window view, with a small margin, rather than centering based on page length.
