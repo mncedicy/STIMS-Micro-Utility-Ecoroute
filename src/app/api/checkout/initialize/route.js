@@ -16,12 +16,13 @@ export async function OPTIONS() {
 
 export async function POST(req) {
     try {
-        const { userId, userEmail } = await req.json();
+        const { userId, userEmail, name, surname, company } = await req.json();
 
         if (!userId || !userEmail) {
             return NextResponse.json({ success: false, error: "Missing identity tokens." }, { status: 400 });
         }
 
+        const callbackUrl = process.env.PAYSTACK_CALLBACK_URL;
         const secretKey = process.env.PAYSTACK_SECRET_KEY;
         if (!secretKey) {
             return NextResponse.json({ success: false, error: "PAYSTACK_SECRET_KEY is missing from local .env.local file." }, { status: 500 });
@@ -37,11 +38,15 @@ export async function POST(req) {
                 email: userEmail.trim().toLowerCase(),
                 amount: 28000, // R280 represented in cents
                 currency: "ZAR",
-                callback_url: `http://localhost:3001/?stims_app_id=ecoroute`,
+                callback_url: `${callbackUrl}?stims_app_id=ecoroute`,
+                plan: "PLN_ka0bww33swkznc9",
                 metadata: {
                     user_id: userId,
                     app_id: "ecoroute",
-                    tier: "premium"
+                    tier: "premium",
+                    name: name?.trim() || "",
+                    surname: surname?.trim() || "",
+                    company: company?.trim() || ""
                 }
             }),
             cache: 'no-store'

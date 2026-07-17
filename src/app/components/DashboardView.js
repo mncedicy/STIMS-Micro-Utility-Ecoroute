@@ -38,7 +38,10 @@ export default function DashboardView({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user?.id,
-                    userEmail: user?.email
+                    userEmail: user?.email,
+                    name: profile?.first_name,
+                    surname: profile?.surname,
+                    company: profile?.company
                 })
             });
 
