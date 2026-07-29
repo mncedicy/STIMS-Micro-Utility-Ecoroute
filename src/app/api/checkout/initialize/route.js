@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 export const dynamic = 'force-dynamic';
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'http://localhost:3001',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -22,94 +22,97 @@ export async function POST(req) {
     try {
         const body = await req.json();
 
-        // FLEXIBLE EXT_ALLOCATOR LAYER:
-        // Safely extracts identity references from flat keys OR nested user object payloads seamlessly
+        // FLEXIBLE PARAMETER FALLBACK EXTRACTOR
+        // Safely extracts parameter metrics whether sent flat or inside an outer nested user wrapper
         const targetUserId = body.userId || body.user?.id || body.user_id;
         const targetUserEmail = body.userEmail || body.user?.email || body.email;
-        const targetAppId = body.appId || body.app_id;
-        const targetAmount = body.amount;
+        const targetName = body.name || body.user_metadata?.first_name || "";
+        const targetSurname = body.surname || body.user_metadata?.surname || "";
+        const targetCompany = body.company || body.user_metadata?.company || "";
 
-        // Validation rule validation guard line
-        if (!targetUserId || !targetUserEmail || !targetAppId || !targetAmount) {
-            console.error("🚨 Checkout Payload Rejection: Missing tracking parameters inside payload properties:", JSON.stringify(body, null, 2));
+        if (!targetUserId || !targetUserEmail) {
+            console.error("🚨 EcoRoute Checkout Rejection: Missing identity parameters inside incoming payload properties.");
             return NextResponse.json({
                 success: false,
-                error: `Missing identity reference parameters. Received: User ID: "${targetUserId ? 'Present' : 'Missing'}", Email: "${targetUserEmail ? 'Present' : 'Missing'}", App ID: "${targetAppId ? 'Present' : 'Missing'}", Amount: "${targetAmount ? 'Present' : 'Missing'}"`
+                error: "Missing identity reference parameters. Required authentication fields are blank."
             }, { status: 400, headers: corsHeaders });
         }
 
-        // Derive base URL paths dynamically directly from incoming requests
         const { origin: baseUrl } = new URL(req.url);
 
-        // PRODUCTION ENVIRONMENT KEY SECURITY GUARD
+        // PRODUCTION ENVIRONMENT VARIABLE GUARD
         const secretKey = process.env.PAYSTACK_SECRET_KEY;
         if (!secretKey || secretKey.trim() === "") {
-            console.error("🚨 CRITICAL CONFIURGATION FAULT: PAYSTACK_SECRET_KEY is undefined on Vercel!");
+            console.error("🚨 CRITICAL ENV ERROR: PAYSTACK_SECRET_KEY is undefined on Vercel Production!");
             return NextResponse.json({
                 success: false,
                 error: "Server configuration parameter missing. The payment infrastructure secret key is not set on Vercel."
             }, { status: 500, headers: corsHeaders });
         }
 
-        // Query application parameters dynamically from the database catalogue
+        // Query application parameters dynamically from database catalogue table
         const { data: appConfig, error: appQueryError } = await supabaseAdmin
             .from('applications')
             .select('fee_amount_cents, paystack_plan_id')
-            .eq('app_id', targetAppId)
+            .eq('app_id', 'ecoroute')
             .maybeSingle();
 
-        if (appQueryError) {
-            console.warn(`[Ecosystem Billing Guard]: Catalogue query trace warning: ${appQueryError.message}`);
+        if (appQueryError || !appConfig) {
+            console.warn(`[Ecosystem Billing Guard]: Registry entry for ecoroute unavailable: ${appQueryError?.message}`);
         }
 
-        const dynamicAmount = appConfig?.fee_amount_cents || targetAmount;
-        const globalPlanIdToken = appConfig?.paystack_plan_id ? appConfig.paystack_plan_id.trim() : null;
+        const dynamicCurrency = process.env.NEXT_PUBLIC_PAYSTACK_CURRENCY || "ZAR";
+        const dynamicAmount = appConfig?.fee_amount_cents || (process.env.NEXT_PUBLIC_PAYSTACK_PLAN_AMOUNT_CENTS ? parseInt(process.env.NEXT_PUBLIC_PAYSTACK_PLAN_AMOUNT_CENTS, 10) : 28000);
+        const globalPlanIdToken = appConfig?.paystack_plan_id || (process.env.PAYSTACK_GLOBAL_PLAN_ID || "PLN_ka0bww33swkznc9");
 
-        console.log(`📡 Initializing Paystack payment session for ${targetUserEmail}. Amount: ${dynamicAmount}. Plan Token: ${globalPlanIdToken || 'None'}`);
+        if (!globalPlanIdToken) {
+            throw new Error("No active Paystack Plan ID token has been configured for this module.");
+        }
+
+        console.log(`📡 Dispatched EcoRoute Paystack transaction initialize for: ${targetUserEmail}`);
 
         // Dispatch transaction parameters directly to Paystack's endpoint
         const response = await fetch('https://api.paystack.co/transaction/initialize', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-store'
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 email: targetUserEmail.trim().toLowerCase(),
                 amount: dynamicAmount,
-                currency: 'ZAR',
-                callback_url: `${baseUrl}/dashboard?stims_app_id=${targetAppId}`,
-                ...(globalPlanIdToken && { plan: globalPlanIdToken }),
+                currency: dynamicCurrency.toUpperCase(),
+                callback_url: `${baseUrl}?stims_app_id=ecoroute`,
+                plan: globalPlanIdToken.trim(),
                 metadata: {
                     user_id: targetUserId,
-                    app_id: targetAppId,
-                    tier: 'premium'
+                    app_id: "ecoroute",
+                    tier: "premium",
+                    name: targetName?.trim() || "",
+                    surname: targetSurname?.trim() || "",
+                    company: targetCompany?.trim() || ""
                 },
                 customer: {
+                    first_name: targetName?.trim() || "",
+                    last_name: targetSurname?.trim() || "",
                     metadata: {
-                        user_id: targetUserId,
-                        custom_fields: [
-                            {
-                                variable_name: "user_id",
-                                display_name: "User ID",
-                                value: targetUserId
-                            }
-                        ]
+                        user_id: targetUserId
                     }
                 }
             }),
             cache: 'no-store'
         });
 
-        // FAILSAFE EMPTY RESPONSE PARSING GUARD (PREVENTS JSON CLASHES)
+        // ========================================================================
+        // FAILSAFE TEXT PROCESSING MATRIX (PREVENTS NEXT.JS COMPILED BREAKS)
+        // ========================================================================
         const rawTextResponse = await response.text();
 
         if (!rawTextResponse || rawTextResponse.trim() === "") {
-            console.error(`❌ Paystack gateway returned a completely blank server response string. Status Code: ${response.status}`);
+            console.error(`❌ Paystack gateway returned a blank string token. Status Code: ${response.status}`);
             return NextResponse.json({
                 success: false,
-                error: `Payment infrastructure gateway returned an empty response channel (Status ${response.status}). Check production environment key variables.`
+                error: `Payment infrastructure gateway returned an empty channel (Status ${response.status}). Check Vercel production keys configuration.`
             }, { status: 502, headers: corsHeaders });
         }
 
@@ -117,10 +120,10 @@ export async function POST(req) {
         try {
             result = JSON.parse(rawTextResponse);
         } catch (parseError) {
-            console.error("❌ Failed to parse response text strings as valid JSON object structure:", rawTextResponse);
+            console.error("❌ Failed to parse response data string into a valid JSON schema model:", rawTextResponse);
             return NextResponse.json({
                 success: false,
-                error: `Gateway returned corrupted non-JSON parameters block (Status ${response.status}). Verify operational channel status maps.`
+                error: `Gateway parameter compilation crash. Server returned non-JSON data stream error (Status ${response.status}).`
             }, { status: 502, headers: corsHeaders });
         }
 
@@ -132,7 +135,7 @@ export async function POST(req) {
         return NextResponse.json({ success: true, url: result.data.authorization_url }, { status: 200, headers: corsHeaders });
 
     } catch (error) {
-        console.error("🚨 EcoRoute Checkout Initialization Loop Fault:", error.message);
+        console.error("🚨 EcoRoute Checkout Route Error:", error.message);
         return NextResponse.json({ success: false, error: error.message }, { status: 500, headers: corsHeaders });
     }
 }
