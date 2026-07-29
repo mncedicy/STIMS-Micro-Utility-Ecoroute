@@ -132,6 +132,7 @@ export async function POST(req) {
             throw new Error(result.message || `Authorization rejected by Paystack gateway with status code ${response.status}.`);
         }
 
+
         return NextResponse.json({ success: true, url: result.data.authorization_url }, { status: 200, headers: corsHeaders });
 
     } catch (error) {
