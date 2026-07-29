@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+export const dynamic = 'force-dynamic';
+
 const corsHeaders = {
-    'Access-Control-Allow-Origin': 'http://localhost:3001',
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -12,83 +14,114 @@ export async function OPTIONS() {
 }
 
 export async function POST(req) {
+    // Create internal administrative bypass client using service keys
     const supabaseAdmin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-
     try {
-        const { userId, userEmail, name, surname, company } = await req.json();
-
-        if (!userId || !userEmail) {
-            return NextResponse.json({ success: false, error: "Missing identity tokens." }, { status: 400 });
+        const { userId, userEmail, appId, amount } = await req.json();
+        if (!userId || !userEmail || !appId || !amount) {
+            return NextResponse.json({ success: false, error: "Missing identity reference parameters." }, { status: 400, headers: corsHeaders });
         }
 
+        // Derive base domain URL pathing strings dynamically from requests
         const { origin: baseUrl } = new URL(req.url);
+
+        // PRODUCTION CRITICAL ENV VARIABLE GUARD
         const secretKey = process.env.PAYSTACK_SECRET_KEY;
-        if (!secretKey) {
-            return NextResponse.json({ success: false, error: "PAYSTACK_SECRET_KEY missing from configurations." }, { status: 500 });
+        if (!secretKey || secretKey.trim() === "") {
+            console.error("🚨 CRITICAL INITIALIZATION ERROR: PAYSTACK_SECRET_KEY is undefined on Vercel Production!");
+            return NextResponse.json({
+                success: false,
+                error: "Server configuration parameter missing. The payment infrastructure secret key is not set on Vercel Production."
+            }, { status: 500, headers: corsHeaders });
         }
 
+        // Query monetization parameters dynamically from database catalogue table
         const { data: appConfig, error: appQueryError } = await supabaseAdmin
             .from('applications')
             .select('fee_amount_cents, paystack_plan_id')
-            .eq('app_id', 'ecoroute')
+            .eq('app_id', appId)
             .maybeSingle();
 
-        if (appQueryError || !appConfig) {
-            console.warn(`[Ecosystem Billing Guard]: Registry entry for ecoroute unavailable.`);
+        if (appQueryError) {
+            console.warn(`[EcoRoute Billing Matrix]: Catalogue fetch trace warning: ${appQueryError.message}`);
         }
 
-        const dynamicCurrency = process.env.NEXT_PUBLIC_PAYSTACK_CURRENCY || "ZAR";
-        const dynamicAmount = appConfig?.fee_amount_cents || (process.env.NEXT_PUBLIC_PAYSTACK_PLAN_AMOUNT_CENTS ? parseInt(process.env.NEXT_PUBLIC_PAYSTACK_PLAN_AMOUNT_CENTS, 10) : 28000);
-        const globalPlanIdToken = appConfig?.paystack_plan_id || (process.env.PAYSTACK_GLOBAL_PLAN_ID || "PLN_ka0bww33swkznc9");
+        const dynamicAmount = appConfig?.fee_amount_cents || amount;
+        const globalPlanIdToken = appConfig?.paystack_plan_id ? appConfig.paystack_plan_id.trim() : null;
 
-        if (!globalPlanIdToken) {
-            throw new Error("No active Paystack Plan ID token has been configured for this module.");
-        }
+        console.log(`📡 Dispatched Paystack checkout authorization: User=${userEmail}, App=${appId}, Plan=${globalPlanIdToken || 'None'}`);
 
-        // Dispatch payload initialization mapping.
-        const response = await fetch('https://api.paystack.co/transaction/initialize', {
+        const response = await fetch('https://paystack.co', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store'
             },
             body: JSON.stringify({
                 email: userEmail.trim().toLowerCase(),
                 amount: dynamicAmount,
-                currency: dynamicCurrency.toUpperCase(),
-                callback_url: `${baseUrl}?stims_app_id=ecoroute`,
-                plan: globalPlanIdToken.trim(),
+                currency: 'ZAR',
+                callback_url: `${baseUrl}/dashboard?stims_app_id=${appId}`,
+                ...(globalPlanIdToken && { plan: globalPlanIdToken }),
                 metadata: {
                     user_id: userId,
-                    app_id: "ecoroute",
-                    tier: "premium",
-                    name: name?.trim() || "",
-                    surname: surname?.trim() || "",
-                    company: company?.trim() || ""
+                    app_id: appId,
+                    tier: 'premium'
                 },
                 customer: {
-                    first_name: name?.trim() || "",
-                    last_name: surname?.trim() || "",
                     metadata: {
-                        user_id: userId
+                        user_id: userId,
+                        custom_fields: [
+                            {
+                                variable_name: "user_id",
+                                display_name: "User ID",
+                                value: userId
+                            }
+                        ]
                     }
                 }
             }),
             cache: 'no-store'
         });
 
-        const result = await response.json();
-        if (!result.status) throw new Error(result.message || "Paystack initialization rejected.");
+        // ========================================================================
+        // FAILSAFE TEXT PROCESSING MATRIX (PREVENTS NEXT.JS COMPILED BREAKS)
+        // ========================================================================
+        const rawTextResponse = await response.text();
 
-        // REMOVED: Database user_subscriptions entry writing logic has been relocated to the webhook processor.
-        return NextResponse.json({ success: true, url: result.data.authorization_url });
+        if (!rawTextResponse || rawTextResponse.trim() === "") {
+            console.error(`❌ Paystack gateway returned a blank string token. Status Code: ${response.status}`);
+            return NextResponse.json({
+                success: false,
+                error: `Payment infrastructure gateway returned an empty channel (Status ${response.status}). Check Vercel production keys configuration.`
+            }, { status: 502, headers: corsHeaders });
+        }
+
+        let result;
+        try {
+            result = JSON.parse(rawTextResponse);
+        } catch (parseError) {
+            console.error("❌ Failed to parse response data string into a valid JSON schema model:", rawTextResponse);
+            return NextResponse.json({
+                success: false,
+                error: `Gateway parameter compilation crash. Server returned non-JSON data stream error (Status ${response.status}).`
+            }, { status: 502, headers: corsHeaders });
+        }
+
+        if (!response.ok || !result.status) {
+            console.error("❌ Paystack integration link initialization transaction rejected:", JSON.stringify(result, null, 2));
+            throw new Error(result.message || `Authorization rejected by Paystack gateway with status code ${response.status}.`);
+        }
+
+        return NextResponse.json({ success: true, url: result.data.authorization_url }, { status: 200, headers: corsHeaders });
 
     } catch (error) {
-        console.error("🚨 EcoRoute Checkout Route Error:", error.message);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        console.error("🚨 EcoRoute Checkout Initialization Pipeline Fault:", error.message);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500, headers: corsHeaders });
     }
 }
