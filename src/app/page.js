@@ -42,6 +42,7 @@ export default function Home() {
     return () => { authSub?.unsubscribe(); window.removeEventListener('focus', syncState); };
   }, []);
 
+
   const loadData = async () => {
     if (!user) return;
     try {
