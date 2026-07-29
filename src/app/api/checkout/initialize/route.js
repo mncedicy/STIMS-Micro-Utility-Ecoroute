@@ -55,7 +55,7 @@ export async function POST(req) {
 
         console.log(`📡 Dispatched Paystack checkout authorization: User=${userEmail}, App=${appId}, Plan=${globalPlanIdToken || 'None'}`);
 
-        const response = await fetch('https://paystack.co', {
+        const response = await fetch('https://api.paystack.co/transaction/initialize', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,
