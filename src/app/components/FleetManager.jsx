@@ -1,56 +1,56 @@
+// /src/app/components/FleetManager.jsx
 'use client';
 
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { dummyMakes, dummyModelsMap } from '../lib/mockData';
+import FleetAssetSelectorCascade from './FleetAssetSelectorCascade';
 
 export default function FleetManager({ user, isOpen, onClose, onVehicleAdded }) {
-    const [makeId, setMakeId] = useState('');
-    const [model, setModel] = useState('');
-    const [year, setYear] = useState(new Date().getFullYear());
     const [registration, setRegistration] = useState('');
+    const [selectedModelData, setSelectedModelData] = useState(null);
     const [saving, setSaving] = useState(false);
     const [modalError, setModalError] = useState('');
 
     if (!isOpen) return null;
 
-    const handleMakeChange = (e) => {
-        setMakeId(e.target.value);
-        setModel('');
-    };
-
-    const handleAddAssetSubmit = async (e) => {
+    const handleFormSubmit = async (e) => {
         e.preventDefault();
-        if (!makeId || !model || !year || !registration) {
-            return setModalError('Complete all registry parameters.');
+        setModalError('');
+
+        if (!registration.trim() || !selectedModelData) {
+            return setModalError('Complete all asset parameters and selection paths.');
         }
 
         setSaving(true);
-        setModalError('');
-
-        const targetMakeObject = dummyMakes.find(m => m.id === makeId);
-        const vehicleMakeName = targetMakeObject ? targetMakeObject.name : makeId;
-
         try {
-            // MODIFIED: Updated field variable key to registration_number to align with schema properties
+            let multiplier = 0.23; // Schema default fallback coefficient per kilometer
+
+            if (parseFloat(selectedModelData.co2_tailpipe_gpm) > 0) {
+                const gpm = parseFloat(selectedModelData.co2_tailpipe_gpm);
+                multiplier = (gpm / 1.60934) / 1000;
+            } else if (parseFloat(selectedModelData.comb_mpg_1) > 0) {
+                const mpg = parseFloat(selectedModelData.comb_mpg_1);
+                const isDiesel = selectedModelData.fuel_type_1?.toLowerCase().includes('diesel');
+                const kgPerGallon = isDiesel ? 10.15 : 8.89;
+                multiplier = ((1 / mpg) * kgPerGallon) / 1.60934;
+            }
+
             const { error } = await supabase
                 .from('ecoroute_vehicles')
                 .insert([{
                     user_id: user.id,
-                    make: vehicleMakeName,
-                    model: model,
-                    year: Number(year),
+                    make: selectedModelData.make,
+                    model: selectedModelData.model,
+                    year: selectedModelData.year,
                     registration_number: registration.toUpperCase().trim(),
+                    carbon_multiplier: parseFloat(multiplier.toFixed(6)),
                     is_active: true
                 }]);
 
             if (error) throw error;
 
-            setMakeId('');
-            setModel('');
-            setYear(new Date().getFullYear());
             setRegistration('');
-
+            setSelectedModelData(null);
             onVehicleAdded();
             onClose();
         } catch (err) {
@@ -60,11 +60,9 @@ export default function FleetManager({ user, isOpen, onClose, onVehicleAdded }) 
         }
     };
 
-    const availableModelsList = makeId ? dummyModelsMap[makeId] || [] : [];
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity animate-fade-in font-mono">
-            <div className="w-full max-w-md p-6 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl relative stims-hover-glow transition-all duration-300">
+            <div className="w-full max-w-2xl p-6 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl relative stims-hover-glow transition-all duration-300">
 
                 <div className="border-b border-slate-800 pb-3 mb-5 flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -76,7 +74,7 @@ export default function FleetManager({ user, isOpen, onClose, onVehicleAdded }) 
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-slate-500 hover:text-slate-300 transition-colors text-xs"
+                        className="text-slate-500 hover:text-slate-300 transition-colors text-xs cursor-pointer"
                     >
                         [ESC]
                     </button>
@@ -88,71 +86,45 @@ export default function FleetManager({ user, isOpen, onClose, onVehicleAdded }) 
                     </div>
                 )}
 
-                <form onSubmit={handleAddAssetSubmit} className="space-y-4 text-xs">
-                    <div>
-                        <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider">VEHICLE REGISTRATION / LICENSE PLATE</label>
-                        <input
-                            type="text"
-                            placeholder="E.G. GP 1234 XY / STIMS ZN"
-                            value={registration}
-                            onChange={(e) => setRegistration(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 placeholder:text-slate-700 uppercase"
-                            required
+                <form onSubmit={handleFormSubmit} className="space-y-4 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start">
+                        {/* Field 1 of 4: License Plate Text Asset */}
+                        <div className="flex flex-col space-y-1">
+                            <label className="text-slate-400 text-[11px] uppercase tracking-wider font-bold">
+                                VEHICLE REGISTRATION / LICENSE PLATE
+                            </label>
+                            <input
+                                type="text"
+                                placeholder="E.G. GP 1234 XY"
+                                value={registration}
+                                onChange={(e) => setRegistration(e.target.value)}
+                                disabled={saving}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 placeholder:text-slate-700 uppercase"
+                                required
+                            />
+                        </div>
+
+                        {/* Searchable dropdown components handler stack */}
+                        <FleetAssetSelectorCascade
+                            saving={saving}
+                            onSelectedModelChange={setSelectedModelData}
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider">VEHICLE MANUFACTURER (MAKE)</label>
-                        <select
-                            value={makeId}
-                            onChange={handleMakeChange}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
-                            required
-                        >
-                            <option value="">-- SYSTEM SEARCH SPECIFICATION --</option>
-                            {dummyMakes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider">SPECIFIC CLASSIFICATION MODEL</label>
-                        <select
-                            value={model}
-                            onChange={(e) => setModel(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-40"
-                            disabled={!makeId}
-                            required
-                        >
-                            <option value="">-- SELECT VEHICLE MODEL LAYER --</option>
-                            {availableModelsList.map(mod => <option key={mod} value={mod}>{mod}</option>)}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider">MANUFACTURING YEAR LOG</label>
-                        <input
-                            type="number"
-                            min={1990}
-                            max={new Date().getFullYear() + 1}
-                            value={year}
-                            onChange={(e) => setYear(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
-                            required
-                        />
-                    </div>
-
+                    {/* Action Form Footer */}
                     <div className="flex space-x-2 pt-2 border-t border-slate-800/60 mt-6">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-400 py-2 rounded transition-colors uppercase text-[11px] tracking-wider"
+                            disabled={saving}
+                            className="flex-1 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-400 py-2 rounded transition-colors uppercase text-[11px] tracking-wider cursor-pointer text-center"
                         >
                             ABORT
                         </button>
                         <button
                             type="submit"
-                            disabled={saving}
-                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded transition-colors uppercase text-[11px] tracking-wider disabled:opacity-50"
+                            disabled={saving || !selectedModelData || !registration.trim()}
+                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded transition-colors uppercase text-[11px] tracking-wider disabled:opacity-50 cursor-pointer stims-hover-glow text-center"
                         >
                             {saving ? 'INJECTING ASSET...' : 'COMMIT TO LEDGER'}
                         </button>

@@ -1,3 +1,4 @@
+// /src/app/layout.js
 import "./globals.css";
 import { Analytics } from '@vercel/analytics/next';
 
@@ -9,8 +10,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className="dark" style={{ colorScheme: "dark" }}>
-      <body>
+      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-blue-500/30">
+
+        {/* Render children sub-page layers dynamically */}
         {children}
+
+        {/* Vercel live server performance telemetry core block */}
         <Analytics />
 
       </body>

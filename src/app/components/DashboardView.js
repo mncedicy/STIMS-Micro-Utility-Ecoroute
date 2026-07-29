@@ -4,32 +4,58 @@ import React, { useState } from 'react';
 import Header from './Header';
 import DispatchForm from './DispatchForm';
 import Ledger from './Ledger';
-import { supabase } from '../lib/supabaseClient';
 
 export default function DashboardView({
-    user, profile, isPremium, quotaReached, customVehicles, selectedCustomVehicle, setSelectedCustomVehicle, distance, setDistance, unit, setUnit, estimate, calcLoading, errorMsg, handleCalculate, subscription, loadData, setIsFleetModalOpen
+    user,
+    profile,
+    isPremium,
+    quotaReached,
+    customVehicles,
+    selectedCustomVehicle,
+    setSelectedCustomVehicle,
+    distance,
+    setDistance,
+    unit,
+    setUnit,
+    estimate,
+    calcLoading,
+    errorMsg,
+    handleCalculate,
+    subscription,
+    loadData
 }) {
     const [isPending, setIsPending] = useState(false);
 
     const handleCancelSubscription = async () => {
-        if (!window.confirm("Are you sure you want to cancel your subscription?")) return;
+        if (!window.confirm("Are you sure you want to terminate your premium plan contract?")) return;
         setIsPending(true);
         try {
-            const { error } = await supabase
-                .from('user_subscriptions')
-                .update({ status: 'cancelled' })
-                .eq('user_id', user.id)
-                .eq('app_id', 'ecoroute');
-            if (error) throw error;
-            await loadData();
+            const response = await fetch('/api/checkout/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: user?.id
+                })
+            });
+
+            const cancelResult = await response.json();
+
+            if (response.ok && cancelResult.success) {
+                alert("Cancellation command pushed to Paystack. Syncing changes locally...");
+                setTimeout(async () => {
+                    await loadData();
+                }, 2500);
+            } else {
+                throw new Error(cancelResult.error || "Could not complete authorization steps.");
+            }
         } catch (err) {
-            alert(err.message);
+            console.error(err);
+            alert("Cancellation Fault Trace Warning: " + err.message);
         } finally {
             setIsPending(false);
         }
     };
 
-    // MODIFIED: Pointed the fetch path and body variables to match your exact Paystack API route requirements
     const handlePay = async () => {
         setIsPending(true);
         try {
@@ -38,7 +64,10 @@ export default function DashboardView({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user?.id,
-                    userEmail: user?.email
+                    userEmail: user?.email,
+                    name: profile?.first_name,
+                    surname: profile?.surname,
+                    company: profile?.company
                 })
             });
 
@@ -47,29 +76,55 @@ export default function DashboardView({
             if (sessionData.url) {
                 window.location.href = sessionData.url;
             } else {
-                throw new Error(sessionData.error || "Could not load the payment page.");
+                throw new Error(sessionData.error || "Could not resolve processing gateway authorization session link.");
             }
         } catch (err) {
             console.error(err);
-            alert("Payment screen error: " + err.message);
+            alert("Payment infrastructure authorization fault: " + err.message);
         } finally {
             setIsPending(false);
         }
     };
 
+    // Derived active evaluation state metrics
+    const isActivePremium = subscription && subscription.status === 'active' && subscription.tier === 'premium';
+
     return (
         <div className="space-y-6 w-full animate-fade-in">
+            {quotaReached && (
+                <div className="p-3 bg-amber-950/30 border border-amber-900/40 text-amber-400 text-xs rounded-xl font-mono animate-pulse">
+                    ⚠️ COMPLIANCE ADVISORY: Fleet entry caps reached for free plan level configurations. Upgrade to register unlimited trucks.
+                </div>
+            )}
+
             <Header
                 user={user}
                 profile={profile}
-                isPremium={isPremium}
+                isPremium={isActivePremium}
                 quotaReached={quotaReached}
                 onSuccess={loadData}
             />
 
+            {errorMsg && (
+                <div className="p-3 text-xs bg-rose-950/20 border border-rose-900/40 text-rose-400 font-mono rounded-lg shadow-sm">
+                    ⚠️ SYSTEM LOG alert: {errorMsg}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <DispatchForm distance={distance} setDistance={setDistance} unit={unit} setUnit={setUnit} onSubmit={handleCalculate} loading={calcLoading} errorMsg={errorMsg} customVehicles={customVehicles} selectedCustomVehicle={selectedCustomVehicle} setSelectedCustomVehicle={setSelectedCustomVehicle} />
-                <Ledger estimate={estimate} isPremium={isPremium} />
+                <DispatchForm
+                    distance={distance}
+                    setDistance={setDistance}
+                    unit={unit}
+                    setUnit={setUnit}
+                    onSubmit={handleCalculate}
+                    loading={calcLoading}
+                    customVehicles={customVehicles}
+                    selectedCustomVehicle={selectedCustomVehicle}
+                    setSelectedCustomVehicle={setSelectedCustomVehicle}
+                />
+
+                <Ledger estimate={estimate} isPremium={isActivePremium} />
             </div>
 
             <div className="p-5 bg-slate-900/40 border border-slate-800 rounded-xl stims-hover-glow font-mono text-xs transition-all duration-300">
@@ -77,24 +132,44 @@ export default function DashboardView({
                     <h3 className="text-xs uppercase tracking-widest text-blue-500 font-bold">ECO INTELLIGENCE LICENSE DETAILS</h3>
                     <span className="text-[10px] text-slate-500">SYSTEM STATUS</span>
                 </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                     <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
                         <span className="text-slate-500 text-[10px] block mb-1">ACCOUNT TIER</span>
-                        <span className="text-sm font-bold text-slate-200 uppercase tracking-wide">{subscription.tier} plan</span>
+                        <span className="text-sm font-bold text-slate-200 uppercase tracking-wide">
+                            {isActivePremium ? 'premium' : 'free'} plan
+                        </span>
                     </div>
                     <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
                         <span className="text-slate-500 text-[10px] block mb-1">PLAN STATUS</span>
-                        <span className={`text-sm font-bold uppercase ${subscription.status === 'active' ? 'text-emerald-400' : 'text-slate-500'}`}>{subscription.status}</span>
+                        <span className={`text-sm font-bold uppercase ${isActivePremium ? 'text-emerald-400' : 'text-slate-500'}`}>
+                            {subscription?.status || 'inactive'}
+                        </span>
                     </div>
                     <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
                         <span className="text-slate-500 text-[10px] block mb-1">ADDED VEHICLES</span>
                         <span className="text-sm font-bold text-blue-400">{customVehicles.length} vehicles</span>
                     </div>
                 </div>
+
+                {/* Dynamic billing coverage expiration info block */}
+                {subscription?.current_period_end && subscription.status === 'active' && (
+                    <div className="mb-4 text-[11px] text-slate-400 bg-slate-950/20 border border-slate-800/40 p-2.5 rounded-lg flex justify-between items-center">
+                        <span>📅 NEXT RECURRING BILLING CYCLE:</span>
+                        <span className="font-bold text-slate-300">{new Date(subscription.current_period_end).toLocaleDateString('en-ZA')}</span>
+                    </div>
+                )}
+
+                {subscription?.cancel_reason && subscription.status === 'cancelled' && (
+                    <div className="mb-4 text-[11px] text-rose-400 bg-rose-950/10 border border-rose-950/30 p-2.5 rounded-lg">
+                        ℹ️ CANCELLATION INSIGHT: {subscription.cancel_reason}
+                    </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-900/60 pt-3">
                     <p className="text-slate-500 text-[11px] text-center sm:text-left">Premium unlocks flights, shipping calculators, and lets you add unlimited cars.</p>
                     <div className="flex space-x-2 w-full sm:w-auto shrink-0 justify-end items-center">
-                        {!isPremium ? (
+                        {!isActivePremium ? (
                             <button
                                 onClick={handlePay}
                                 disabled={isPending}

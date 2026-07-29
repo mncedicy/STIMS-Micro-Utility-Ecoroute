@@ -18,7 +18,7 @@ export default function Home() {
   const [selectedCustomVehicle, setSelectedCustomVehicle] = useState('');
   const [isFleetModalOpen, setIsFleetModalOpen] = useState(false);
   const [distance, setDistance] = useState(100);
-  const [unit, setUnit] = useState('mi');
+  const [unit, setUnit] = useState('km'); // Default standard metric system
   const [estimate, setEstimate] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,60 +46,68 @@ export default function Home() {
   const loadData = async () => {
     if (!user) return;
     try {
+      // Fetch data streams concurrently from Supabase
       const [prof, sub, cars, logs] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
         supabase.from('user_subscriptions').select('tier, status').eq('user_id', user.id).eq('app_id', 'ecoroute').maybeSingle(),
         supabase.from('ecoroute_vehicles').select('*').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: false }),
-        supabase.from('ecoroute_emissions_logs').select('*').order('created_at', { ascending: true })
+        supabase.from('ecoroute_emissions_logs').select('*').order('created_at', { ascending: false }) // Sorted newest first for scannable timeline items
       ]);
+
       setProfile(prof.data);
       setSub(sub.data ? { tier: sub.data.tier, status: sub.data.status } : { tier: 'free', status: 'inactive' });
       setCustomVehicles(cars.data || []);
       setRawLogsArray(logs.data || []);
       if (logs.data) setHistory(logs.data.map(l => ({ carbon_kg: l.carbon_kg, estimated_at: l.created_at })));
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) {
+      console.error('EcoRoute core ledger data loading exception:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { if (user) loadData(); }, [user]);
 
-  async function handleCalculate(p) {
-    setCalcLoading(true); setErrorMsg('');
-    let plateLabel = '';
-
-    if (p.type === 'vehicle') {
-      const car = customVehicles.find(v => v.id === p.vehicle_model_id);
-      if (!car) return (setErrorMsg('Select valid car.'), setCalcLoading(false));
-      Object.assign(p, { vehicle_make: car.make, vehicle_model: car.model, vehicle_year: car.year });
-      plateLabel = car.registration_number || car.registration || '';
-    }
+  async function handleCalculate(formPayload) {
+    setCalcLoading(true);
+    setErrorMsg('');
 
     try {
-      // FIXED: Restored the true Carbon Calculation API route path with secure bearer headers
-      const res = await fetch('/api/v1/estimates', {
+      // FIX AUTHENTICATION HEADER EXTRACTION PATHWAY:
+      // Try extracting live access token directly from active memory session variables first
+      const { data: currentSessionData } = await supabase.auth.getSession();
+      let accessToken = currentSessionData?.session?.access_token || '';
+
+      // Fallback cleanly to localStorage object lookups if memory bounds are missing
+      if (!accessToken) {
+        const localSsoSessionString = window.localStorage.getItem('stims-enterprise-sso');
+        if (localSsoSessionString) {
+          const parsedSsoData = JSON.parse(localSsoSessionString);
+          accessToken = parsedSsoData?.access_token || parsedSsoData?.currentSession?.access_token || '';
+        }
+      }
+
+      // Dispatch parameters into your internal offline endpoint handler with auth headers attached
+      const res = await fetch('/api/estimates', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer STIMS_SECURE_ECO_PASS_KEY'
+          'Authorization': accessToken ? `Bearer ${accessToken}` : ''
         },
-        body: JSON.stringify(p)
+        body: JSON.stringify(formPayload)
       });
-      const result = await res.json(); if (result.error) throw new Error(result.error);
-      const est = result.data.attributes;
 
-      const displayString = p.type === 'vehicle'
-        ? `Fleet Car [${plateLabel.toUpperCase()}] ${p.vehicle_make} ${p.vehicle_model}`
-        : est.category_display;
+      const result = await res.json();
+      if (!res.ok || result.error) throw new Error(result.error || 'Offline calculation execution rejected.');
 
-      const { data: rows, error: dbErr } = await supabase.from('ecoroute_emissions_logs').insert([{
-        vehicle_id: p.type === 'vehicle' ? p.vehicle_model_id : null,
-        category_display: displayString,
-        carbon_kg: est.carbon_kg, carbon_g: est.carbon_g, carbon_mt: est.carbon_mt, carbon_lb: est.carbon_lb, raw_payload: { ...est, ...p, registration_number: plateLabel }
-      }]).select();
-      if (dbErr) throw dbErr;
-
-      setEstimate({ ...est, supabase_id: rows && rows.length > 0 ? rows.id : null, category_display: displayString });
-      await loadData();
-    } catch (err) { setErrorMsg(err.message || 'Processing failed.'); } finally { setCalcLoading(false); }
+      setEstimate(result.data);
+      await loadData(); // Force data refresh across timeline history charts matrix
+    } catch (err) {
+      console.error('EcoRoute Pipeline calculation error tracking:', err.message);
+      setErrorMsg(err.message || 'Processing logistical parameters failed.');
+    } finally {
+      setCalcLoading(false);
+    }
   }
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-xs font-mono text-slate-600 select-none">AUTHENTICATING SUBDOMAIN MATRIX...</div>;
@@ -118,25 +126,43 @@ export default function Home() {
         <div className="w-full max-w-4xl relative space-y-6">
           <Ticker />
 
-          {errorMsg && (
-            <div className="p-3 text-xs bg-rose-950/20 border border-rose-900/40 text-rose-400 font-mono rounded-lg shadow-sm">
-              ⚠️ SYSTEM LOG alert: {errorMsg}
-            </div>
-          )}
-
           {activeViewPage === 'dashboard' ? (
             <DashboardView
-              user={user} profile={profile} isPremium={isPremium} quotaReached={quotaReached} customVehicles={customVehicles} selectedCustomVehicle={selectedCustomVehicle} setSelectedCustomVehicle={setSelectedCustomVehicle} distance={distance} setDistance={setDistance} unit={unit} setUnit={setUnit} estimate={estimate} calcLoading={calcLoading} errorMsg={errorMsg} handleCalculate={handleCalculate} subscription={subscription} loadData={loadData} setIsFleetModalOpen={setIsFleetModalOpen}
-            />
-          ) : (
-            <FleetView
               user={user}
+              profile={profile}
+              isPremium={isPremium}
+              quotaReached={quotaReached}
               customVehicles={customVehicles}
-              rawLogsArray={rawLogsArray}
+              selectedCustomVehicle={selectedCustomVehicle}
+              setSelectedCustomVehicle={setSelectedCustomVehicle}
+              distance={distance}
+              setDistance={setDistance}
+              unit={unit}
+              setUnit={setUnit}
+              estimate={estimate}
+              calcLoading={calcLoading}
+              errorMsg={errorMsg}
+              handleCalculate={handleCalculate}
+              subscription={subscription}
               loadData={loadData}
               setIsFleetModalOpen={setIsFleetModalOpen}
-              subscription={subscription}
             />
+          ) : (
+            <div className="space-y-6">
+              {errorMsg && (
+                <div className="p-3 text-xs bg-rose-950/20 border border-rose-900/40 text-rose-400 font-mono rounded-lg shadow-sm">
+                  ⚠️ SYSTEM LOG alert: {errorMsg}
+                </div>
+              )}
+              <FleetView
+                user={user}
+                customVehicles={customVehicles}
+                rawLogsArray={rawLogsArray}
+                loadData={loadData}
+                setIsFleetModalOpen={setIsFleetModalOpen}
+                subscription={subscription}
+              />
+            </div>
           )}
         </div>
 

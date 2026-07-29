@@ -48,7 +48,6 @@ export async function getCachedAirportCoords(airportIdentifier) {
         return null;
     }
 
-
     return {
         lat: parseFloat(data.latitude),
         lon: parseFloat(data.longitude)

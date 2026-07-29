@@ -7,20 +7,22 @@ export default function ExportModal({ user, inspectedLogNode, customVehicles = [
     const [statusMsg, setStatusMsg] = useState('');
     const [sending, setSending] = useState(false);
 
-    const initialEmailLookup = user?.email || user?.user?.email || user?.user_metadata?.email || user?.user?.user_metadata?.email || '';
+    const initialEmailLookup = user?.email || user?.user?.email || user?.user_metadata?.email || '';
     const [customTargetEmail, setCustomTargetEmail] = useState(initialEmailLookup);
 
     const matchingCarNode = customVehicles.find(v => v.id === inspectedLogNode?.vehicle_id);
-    const activeCarPlateString = matchingCarNode ? `${matchingCarNode.registration_number || matchingCarNode.registration || 'N/A'}` : 'Not Linked to Fleet Asset';
+    const activeCarPlateString = matchingCarNode ? `${matchingCarNode.registration_number || 'N/A'}` : 'Not Linked to Fleet Asset';
 
     const getTextPayloadSummary = (log) => {
-        const raw = log?.raw_payload || {};
+        if (!log) return '';
         let text = '';
-        if (raw.distance_value) text += `Distance Run Covered:  ${raw.distance_value} ${raw.distance_unit || 'mi'}\n`;
-        if (raw.weight_value) text += `Cargo Payload Mass:    ${raw.weight_value} ${raw.weight_unit || 'kg'}\n`;
-        if (raw.passengers) text += `Passenger Total Pax:   ${raw.passengers} pax\n`;
-        if (raw.legs && raw.legs) text += `Flight Sector Path:    ${raw.legs.departure_airport} -> ${raw.legs.destination_airport}\n`;
-        return text || 'Input Parameters:      Manual data lookup parameters\n';
+        if (log.input_distance) text += `Distance Run Covered:  ${log.input_distance} ${log.input_unit || 'km'}\n`;
+        if (log.cargo_weight) text += `Cargo Payload Mass:    ${log.cargo_weight} ${log.mass_unit || 'kg'}\n`;
+        if (log.passengers_count) text += `Passenger Total Pax:   ${log.passengers_count} pax\n`;
+        if (log.origin_iata && log.dest_iata) text += `Flight Sector Path:    ${log.origin_iata} -> ${log.dest_iata}\n`;
+        if (log.energy_kwh) text += `Electric Power Load:   ${log.energy_kwh} kWh\n`;
+        if (log.gas_quantity) text += `Gas Combustion Volume: ${log.gas_quantity} ${log.gas_unit}\n`;
+        return text || 'Input Parameters:      Offline system calculation metrics\n';
     };
 
     const handleEmailOptionClick = async (e) => {
@@ -46,7 +48,7 @@ QUANTITATIVE EMISSIONS BREAKDOWN SUMMARY:
 ------------------------------------------------------------------------
 Kilograms (KG CO₂):         ${inspectedLogNode.carbon_kg} kg
 Metric Tons (Tons CO₂):      ${inspectedLogNode.carbon_mt} tons
-Grams (G CO₂):               ${inspectedLogNode.carbon_g.toLocaleString()} g
+Grams (G CO₂):               ${inspectedLogNode.carbon_g ? inspectedLogNode.carbon_g.toLocaleString() : 0} g
 Pounds (Lbs CO₂):            ${inspectedLogNode.carbon_lb} lbs
 
 ------------------------------------------------------------------------
@@ -79,7 +81,6 @@ This document is a certified transaction record from ecoroute.stims.co.za.
     };
 
     return (
-        /* FIXED: Changed to items-center to secure perfect screen vertical centering */
         <div className="fixed top-0 left-0 right-0 bottom-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-mono text-xs">
             <div className="w-full max-w-sm p-6 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl space-y-4 mx-auto stims-hover-glow transition-all duration-300">
                 <div className="flex items-center space-x-2 border-b border-slate-800 pb-2.5">
@@ -100,7 +101,7 @@ This document is a certified transaction record from ecoroute.stims.co.za.
 
                 <div className="flex flex-col gap-2 pt-1 text-[10px]">
                     <button type="button" disabled={sending} onClick={() => { onGeneratePdf(); onClose(); }} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center stims-hover-glow cursor-pointer">📥 Print or Save PDF Locally</button>
-                    <button type="button" disabled={sending} onClick={handleEmailOptionClick} className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer stims-hover-glow"> {sending ? "Sending Email..." : "📧 Email Clean Report File"}</button>
+                    <button type="button" disabled={sending} onClick={handleEmailOptionClick} className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer stims-hover-glow">{sending ? "Sending Email..." : "📧 Email Clean Report File"}</button>
                     <button type="button" disabled={sending} onClick={onClose} className="w-full text-slate-500 hover:text-slate-400 text-center py-1 mt-1 transition-colors uppercase text-[9px] tracking-widest">Dismiss Options</button>
                 </div>
             </div>
