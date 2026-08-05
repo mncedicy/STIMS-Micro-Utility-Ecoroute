@@ -72,7 +72,7 @@ export async function POST(req) {
         console.log(`📡 Dispatched EcoRoute Paystack transaction initialize for: ${targetUserEmail}`);
 
         // Dispatch transaction parameters directly to Paystack's endpoint
-        const response = await fetch('https://api.paystack.co/transaction/initialize', {
+        const response = await fetch(process.env.PAYSTACK_INITIALIZE_URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,

@@ -87,7 +87,7 @@ export async function POST(req) {
         console.log(`📡 Relaying cancellation intent payload processing directly to Paystack API gateway for Code: ${paystackSubscriptionCode}`);
 
         // DISPATCH SECURE COMMONLY USED JSON REJECTION PAYLOADS TO PAYSTACK
-        const paystackResponse = await fetch('https://api.paystack.co/subscription/disable', {
+        const paystackResponse = await fetch(process.env.PAYSTACK_CANCEL_URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,
