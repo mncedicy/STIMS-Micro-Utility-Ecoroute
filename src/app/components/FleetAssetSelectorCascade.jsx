@@ -1,7 +1,7 @@
 // /src/app/components/FleetAssetSelectorCascade.jsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import SearchableDropdownField from './SearchableDropdownField';
 import FleetAssetTechnicalHud from './FleetAssetTechnicalHud';
@@ -17,18 +17,21 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
     const [selectedModelData, setSelectedModelData] = useState(null);
 
     const [openDropdown, setOpenDropdown] = useState(''); // 'year', 'make', 'model', or ''
+    const [searchLoading, setSearchLoading] = useState(false);
+
+    // Track previous lookup criteria parameters to prevent query execution loops
+    const lastMakeQuery = useRef('');
+    const lastModelQuery = useRef('');
 
     // --- PIPELINE 1: Load ALL historical unique years using the optimized database RPC function ---
     useEffect(() => {
         async function fetchDistinctYears() {
             try {
-                // Invokes the new PostgreSQL native function, bypassing default 1000 row page limit restrictions
                 const { data, error } = await supabase
                     .rpc('get_distinct_vehicle_years');
 
                 if (error) throw error;
 
-                // Map the integer array contents cleanly over to string lookup objects
                 const formattedYears = data.map(d => d.year_log.toString());
                 setYears(formattedYears);
             } catch (err) {
@@ -38,47 +41,93 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
         fetchDistinctYears();
     }, []);
 
-    // --- PIPELINE 2: Load unique manufacturer brands for the selected year (Max 1000 matching items is plenty for a year) ---
-    useEffect(() => {
-        if (!selectedYear) {
-            setMakes([]); setModels([]); setSelectedMake(''); setSelectedModelId(''); setSelectedModelData(null);
-            onSelectedModelChange(null); return;
-        }
-        async function fetchMakes() {
-            try {
-                const { data, error } = await supabase
-                    .from('ecoroute_static_vehicles')
-                    .select('make')
-                    .eq('year', parseInt(selectedYear, 10))
-                    .order('make', { ascending: true });
-                if (error) throw error;
-                setMakes([...new Set(data.map(d => d.make))]);
-                setModels([]); setSelectedMake(''); setSelectedModelId(''); setSelectedModelData(null);
-                onSelectedModelChange(null);
-            } catch (err) { console.error(err); }
-        }
-        fetchMakes();
-    }, [selectedYear, onSelectedModelChange]);
+    // --- PIPELINE 2: Live Search Unique Manufacturer Brands Natively via Database Streams ---
+    const fetchMakesFromDatabase = async (inputQuery = '') => {
+        if (!selectedYear) return;
+        setSearchLoading(true);
+        const cleanQuery = inputQuery.trim();
+        lastMakeQuery.current = cleanQuery;
 
-    // --- PIPELINE 3: Load engine models for Year + Make combination ---
-    useEffect(() => {
-        if (!selectedMake || !selectedYear) { setModels([]); setSelectedModelId(''); setSelectedModelData(null); onSelectedModelChange(null); return; }
-        async function fetchModels() {
-            try {
-                const { data, error } = await supabase
-                    .from('ecoroute_static_vehicles')
-                    .select('id, model, fuel_type_1')
-                    .eq('year', parseInt(selectedYear, 10))
-                    .eq('make', selectedMake)
-                    .order('model', { ascending: true });
-                if (error) throw error;
-                setModels(data);
-                setSelectedModelId(''); setSelectedModelData(null);
-                onSelectedModelChange(null);
-            } catch (err) { console.error(err); }
+        try {
+            let baseQuery = supabase
+                .from('ecoroute_static_vehicles')
+                .select('make')
+                .eq('year', parseInt(selectedYear, 10))
+                .order('make', { ascending: true })
+                .limit(100);
+
+            // Execute an indexed fuzzy case-insensitive filter match if keywords are active
+            if (cleanQuery.length > 0) {
+                baseQuery = baseQuery.ilike('make', `%${cleanQuery}%`);
+            }
+
+            const { data, error } = await baseQuery;
+            if (error) throw error;
+
+            // Extract unique values from the query stream natively
+            const uniqueMakes = [...new Set(data.map(d => d.make))];
+            setMakes(uniqueMakes);
+        } catch (err) {
+            console.error('Database server-side make search exception:', err);
+        } finally {
+            setSearchLoading(false);
         }
-        fetchModels();
-    }, [selectedYear, selectedMake, onSelectedModelChange]);
+    };
+
+    // --- PIPELINE 3: Live Search Engine Classification Models Based on Year + Make + Input Text ---
+    const fetchModelsFromDatabase = async (inputQuery = '') => {
+        if (!selectedMake || !selectedYear) return;
+        setSearchLoading(true);
+        const cleanQuery = inputQuery.trim();
+        lastModelQuery.current = cleanQuery;
+
+        try {
+            let baseQuery = supabase
+                .from('ecoroute_static_vehicles')
+                .select('id, model, fuel_type_1')
+                .eq('year', parseInt(selectedYear, 10))
+                .eq('make', selectedMake)
+                .order('model', { ascending: true })
+                .limit(100);
+
+            // Execute case-insensitive string filtering match directly inside Postgres
+            if (cleanQuery.length > 0) {
+                baseQuery = baseQuery.ilike('model', `%${cleanQuery}%`);
+            }
+
+            const { data, error } = await baseQuery;
+            if (error) throw error;
+
+            setModels(data);
+        } catch (err) {
+            console.error('Database server-side model search exception:', err);
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    // Reset downstream dependencies immediately whenever the parent anchor year drops or shifts
+    useEffect(() => {
+        setMakes([]); setModels([]); setSelectedMake(''); setSelectedModelId(''); setSelectedModelData(null);
+        onSelectedModelChange(null);
+        lastMakeQuery.current = '';
+        lastModelQuery.current = '';
+
+        if (selectedYear) {
+            fetchMakesFromDatabase('');
+        }
+    }, [selectedYear]);
+
+    // Reset child options when manufacturer brand switches
+    useEffect(() => {
+        setModels([]); setSelectedModelId(''); setSelectedModelData(null);
+        onSelectedModelChange(null);
+        lastModelQuery.current = '';
+
+        if (selectedMake && selectedYear) {
+            fetchModelsFromDatabase('');
+        }
+    }, [selectedMake]);
 
     // --- PIPELINE 4: Fetch tech specifications details for selected ID ---
     useEffect(() => {
@@ -93,7 +142,9 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
                 if (error) throw error;
                 setSelectedModelData(data);
                 onSelectedModelChange(data);
-            } catch (err) { console.error(err); }
+            } catch (err) {
+                console.error(err);
+            }
         }
         fetchDetails();
     }, [selectedModelId, onSelectedModelChange]);
@@ -116,26 +167,28 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
                 onSelect={(year) => setSelectedYear(year)}
             />
 
-            {/* Field 3 of 4: Searchable Manufacturer Brand Selection */}
+            {/* Field 3 of 4: Searchable Manufacturer Brand Selection (Server-Side Indexed Queries) */}
             <SearchableDropdownField
                 label="VEHICLE MANUFACTURER (MAKE)"
-                placeholder="-- SEARCH MANUFACTURER --"
+                placeholder={searchLoading ? "Streaming database records..." : "-- SEARCH MANUFACTURER --"}
                 valueDisplay={selectedMake}
-                searchPlaceholder="Type to search brands..."
+                searchPlaceholder="Type to query matching makes from database..."
                 items={makes}
                 disabled={!selectedYear || saving}
                 isOpen={openDropdown === 'make'}
                 onToggle={() => setOpenDropdown(openDropdown === 'make' ? '' : 'make')}
                 onSelect={(make) => setSelectedMake(make)}
                 renderItem={(make) => <span className="uppercase">{make}</span>}
+                onSearchChange={(q) => fetchMakesFromDatabase(q)}
+                loading={searchLoading}
             />
 
-            {/* Field 4 of 4: Searchable Engine Class Variant Selection */}
+            {/* Field 4 of 4: Searchable Engine Class Variant Selection (Server-Side Indexed Queries) */}
             <SearchableDropdownField
                 label="SPECIFIC ENGINE CLASSIFICATION MODEL"
-                placeholder="-- SELECT FUEL SPECIFIC VARIANT LAYER --"
+                placeholder={searchLoading ? "Streaming database records..." : "-- SELECT FUEL SPECIFIC VARIANT LAYER --"}
                 valueDisplay={activeModelName ? `${activeModelName} (${activeModelFuelType})` : ''}
-                searchPlaceholder="Filter model name or fuel attributes..."
+                searchPlaceholder="Type model name attributes to query database..."
                 items={models}
                 disabled={!selectedMake || saving}
                 isOpen={openDropdown === 'model'}
@@ -146,6 +199,8 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
                         {modelObj.model} <span className="text-[10px] text-blue-500 font-bold ml-1">({modelObj.fuel_type_1})</span>
                     </>
                 )}
+                onSearchChange={(q) => fetchModelsFromDatabase(q)}
+                loading={searchLoading}
             />
 
             {/* Technical HUD Spec Display card row spans full layout width underneath the grid columns */}

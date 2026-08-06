@@ -101,7 +101,7 @@ This document is a certified transaction record from ecoroute.stims.co.za.
 
                 <div className="flex flex-col gap-2 pt-1 text-[10px]">
                     <button type="button" disabled={sending} onClick={() => { onGeneratePdf(); onClose(); }} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center stims-hover-glow cursor-pointer">📥 Print or Save PDF Locally</button>
-                    <button type="button" disabled={sending} onClick={handleEmailOptionClick} className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer stims-hover-glow">{sending ? "Sending Email..." : "📧 Email Clean Report File"}</button>
+                    <button type="button" disabled onClick={handleEmailOptionClick} className="w-full font-medium bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-not-allowed select-none">{sending ? "Sending Email..." : "📧 Email Clean Report File"}</button>
                     <button type="button" disabled={sending} onClick={onClose} className="w-full text-slate-500 hover:text-slate-400 text-center py-1 mt-1 transition-colors uppercase text-[9px] tracking-widest">Dismiss Options</button>
                 </div>
             </div>
