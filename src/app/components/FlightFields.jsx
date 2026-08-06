@@ -46,7 +46,7 @@ export default function FlightFields({
         : destAirport;
 
     return (
-        <div className="space-y-3 animate-fade-in">
+        <div className="space-y-3 animate-fade-in mt-3">
             <div className="grid grid-cols-2 gap-2">
                 <div className="relative">
                     <SearchableDropdownField

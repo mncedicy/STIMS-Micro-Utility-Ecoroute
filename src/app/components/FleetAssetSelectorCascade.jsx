@@ -56,7 +56,6 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
                 .order('make', { ascending: true })
                 .limit(100);
 
-            // Execute an indexed fuzzy case-insensitive filter match if keywords are active
             if (cleanQuery.length > 0) {
                 baseQuery = baseQuery.ilike('make', `%${cleanQuery}%`);
             }
@@ -64,7 +63,6 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
             const { data, error } = await baseQuery;
             if (error) throw error;
 
-            // Extract unique values from the query stream natively
             const uniqueMakes = [...new Set(data.map(d => d.make))];
             setMakes(uniqueMakes);
         } catch (err) {
@@ -90,7 +88,6 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
                 .order('model', { ascending: true })
                 .limit(100);
 
-            // Execute case-insensitive string filtering match directly inside Postgres
             if (cleanQuery.length > 0) {
                 baseQuery = baseQuery.ilike('model', `%${cleanQuery}%`);
             }
@@ -167,23 +164,23 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
                 onSelect={(year) => setSelectedYear(year)}
             />
 
-            {/* Field 3 of 4: Searchable Manufacturer Brand Selection (Server-Side Indexed Queries) */}
+            {/* Field 3 of 4: Searchable Manufacturer Brand Selection */}
             <SearchableDropdownField
                 label="VEHICLE MANUFACTURER (MAKE)"
                 placeholder={searchLoading ? "Streaming database records..." : "-- SEARCH MANUFACTURER --"}
-                valueDisplay={selectedMake}
+                valueDisplay={selectedMake ? selectedMake.toUpperCase() : ''}
                 searchPlaceholder="Type to query matching makes from database..."
                 items={makes}
                 disabled={!selectedYear || saving}
                 isOpen={openDropdown === 'make'}
                 onToggle={() => setOpenDropdown(openDropdown === 'make' ? '' : 'make')}
                 onSelect={(make) => setSelectedMake(make)}
-                renderItem={(make) => <span className="uppercase">{make}</span>}
+                renderItem={(make) => make.toString().toUpperCase()} // FIXED: Returns clean string format parameter primitive instead of layout block object
                 onSearchChange={(q) => fetchMakesFromDatabase(q)}
                 loading={searchLoading}
             />
 
-            {/* Field 4 of 4: Searchable Engine Class Variant Selection (Server-Side Indexed Queries) */}
+            {/* Field 4 of 4: Searchable Engine Class Variant Selection */}
             <SearchableDropdownField
                 label="SPECIFIC ENGINE CLASSIFICATION MODEL"
                 placeholder={searchLoading ? "Streaming database records..." : "-- SELECT FUEL SPECIFIC VARIANT LAYER --"}
@@ -194,11 +191,7 @@ export default function FleetAssetSelectorCascade({ saving, onSelectedModelChang
                 isOpen={openDropdown === 'model'}
                 onToggle={() => setOpenDropdown(openDropdown === 'model' ? '' : 'model')}
                 onSelect={(modelObj) => setSelectedModelId(modelObj.id.toString())}
-                renderItem={(modelObj) => (
-                    <>
-                        {modelObj.model} <span className="text-[10px] text-blue-500 font-bold ml-1">({modelObj.fuel_type_1})</span>
-                    </>
-                )}
+                renderItem={(modelObj) => `${modelObj.model} (${modelObj.fuel_type_1})`} // FIXED: Returns native text string template layout avoiding Element type object crash
                 onSearchChange={(q) => fetchModelsFromDatabase(q)}
                 loading={searchLoading}
             />

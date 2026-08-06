@@ -5,7 +5,7 @@ import React from 'react';
 
 export default function ShippingFields({ weight, setWeight, weightUnit, setWeightUnit }) {
     return (
-        <div className="grid grid-cols-2 gap-2 animate-fade-in font-mono text-xs items-end">
+        <div className="grid grid-cols-2 gap-2 animate-fade-in font-mono text-xs items-end mt-3">
             <div>
                 <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider font-bold">CARGO WEIGHT</label>
                 <input
