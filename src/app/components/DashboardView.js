@@ -31,10 +31,7 @@ export default function DashboardView({
         if (!window.confirm("Are you sure you want to terminate your premium plan contract?")) return;
         setIsPending(true);
         try {
-
-
-            // FIXED: Set URL endpoint back to exact folder map matching backend server route setup
-            const response = await fetch('http://localhost:3001/api/checkout/cancel', {
+            const response = await fetch(process.env.NEXT_PUBLIC_PAYSTACK_CANCEL_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -61,15 +58,10 @@ export default function DashboardView({
         }
     };
 
-
-
-
     const handlePay = async () => {
         setIsPending(true);
         try {
-
-            // FIXED: Updated the callbackUrl format to target your specific root routing structure exactly
-            const response = await fetch('http://localhost:3001/api/checkout/initialize', {
+            const response = await fetch(process.env.NEXT_PUBLIC_PAYSTACK_INITIALIZE_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -80,7 +72,6 @@ export default function DashboardView({
                 })
             });
 
-            // Check that the network response is actually successful
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.error || `Server responded with status ${response.status}`);
@@ -88,7 +79,6 @@ export default function DashboardView({
 
             const sessionData = await response.json();
 
-            // Modified condition to safely check sessionData.success along with the url property
             if (sessionData.success && sessionData.url) {
                 window.location.href = sessionData.url;
             } else {
