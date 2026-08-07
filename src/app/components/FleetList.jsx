@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-export default function FleetList({ customVehicles, onVehicleDeleted }) {
+export default function FleetList({ customVehicles, onVehicleDeleted, isPremium }) {
     const [vehicleToDelete, setVehicleToDelete] = useState(null);
     const [deleting, setDeleting] = useState(false);
 

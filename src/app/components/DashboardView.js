@@ -26,15 +26,20 @@ export default function DashboardView({
 }) {
     const [isPending, setIsPending] = useState(false);
 
+
     const handleCancelSubscription = async () => {
         if (!window.confirm("Are you sure you want to terminate your premium plan contract?")) return;
         setIsPending(true);
         try {
-            const response = await fetch('/api/checkout/cancel', {
+
+
+            // FIXED: Set URL endpoint back to exact folder map matching backend server route setup
+            const response = await fetch('http://localhost:3001/api/checkout/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId: user?.id
+                    userId: user?.id,
+                    appId: "ecoroute",
                 })
             });
 
@@ -56,24 +61,35 @@ export default function DashboardView({
         }
     };
 
+
+
+
     const handlePay = async () => {
         setIsPending(true);
         try {
-            const response = await fetch('/api/checkout/initialize', {
+
+            // FIXED: Updated the callbackUrl format to target your specific root routing structure exactly
+            const response = await fetch('http://localhost:3001/api/checkout/initialize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user?.id,
                     userEmail: user?.email,
-                    name: profile?.first_name,
-                    surname: profile?.surname,
-                    company: profile?.company
+                    appId: "ecoroute",
+                    callbackUrl: `${window.location.origin}?stims_app_id=ecoroute`
                 })
             });
 
+            // Check that the network response is actually successful
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Server responded with status ${response.status}`);
+            }
+
             const sessionData = await response.json();
 
-            if (sessionData.url) {
+            // Modified condition to safely check sessionData.success along with the url property
+            if (sessionData.success && sessionData.url) {
                 window.location.href = sessionData.url;
             } else {
                 throw new Error(sessionData.error || "Could not resolve processing gateway authorization session link.");
@@ -85,6 +101,8 @@ export default function DashboardView({
             setIsPending(false);
         }
     };
+
+
 
     // Derived active evaluation state metrics
     const isActivePremium = subscription && subscription.status === 'active' && subscription.tier === 'premium';

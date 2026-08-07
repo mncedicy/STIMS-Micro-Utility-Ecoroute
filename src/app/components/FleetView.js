@@ -9,6 +9,7 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
     const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
     const [isPending, setIsPending] = useState(false);
 
+
     const isPremium = subscription?.tier === 'premium' && subscription?.status === 'active';
     const freeTierLimitReached = !isPremium && customVehicles.length >= 1;
 
@@ -36,16 +37,30 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
         setIsFleetModalOpen(true);
     };
 
+
     const handleUpgradePlanAction = async () => {
         setIsPending(true);
         try {
-            const response = await fetch('/api/checkout/initialize', {
+            // FIXED: Added process.env. prefix inline to ensure Next.js exposes the string to the browser
+            const response = await fetch(process.env.NEXT_PUBLIC_PAYSTACK_INITIALIZE_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user?.id, userEmail: user?.email })
+                body: JSON.stringify({
+                    userId: user?.id,
+                    userEmail: user?.email,
+                    appId: "ecoroute",
+                    callbackUrl: `${window.location.origin}?stims_app_id=ecoroute`
+                })
             });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Server responded with status ${response.status}`);
+            }
+
             const sessionData = await response.json();
-            if (sessionData.url) {
+
+            if (sessionData.success && sessionData.url) {
                 setIsLimitModalOpen(false);
                 window.location.href = sessionData.url;
             } else {
@@ -58,6 +73,44 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
             setIsPending(false);
         }
     };
+
+    const handlePay = async () => {
+        setIsPending(true);
+        try {
+            // FIXED: Added process.env. prefix inline
+            const response = await fetch(process.env.NEXT_PUBLIC_PAYSTACK_INITIALIZE_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: user?.id,
+                    userEmail: user?.email,
+                    appId: "ecoroute",
+                    callbackUrl: `${window.location.origin}?stims_app_id=ecoroute`
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Server responded with status ${response.status}`);
+            }
+
+            const sessionData = await response.json();
+
+            if (sessionData.success && sessionData.url) {
+                window.location.href = sessionData.url;
+            } else {
+                throw new Error(sessionData.error || "Could not resolve processing gateway authorization session link.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Payment infrastructure authorization fault: " + err.message);
+        } finally {
+            setIsPending(false);
+        }
+    };
+
+
+
 
     return (
         <div className="space-y-6 w-full font-mono animate-fade-in relative">
@@ -72,7 +125,7 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
                 </div>
             </div>
 
-            <FleetList customVehicles={customVehicles} onVehicleDeleted={loadData} />
+            <FleetList customVehicles={customVehicles} onVehicleDeleted={loadData} isPremium={isPremium} />
             <LogHistoryManager user={user} customVehicles={customVehicles} rawLogsArray={rawLogsArray} />
             <CarbonChart history={totalGraphHistory} />
 
