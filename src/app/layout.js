@@ -1,6 +1,7 @@
 // /src/app/layout.js
 import "./globals.css";
 import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata = {
   title: "EcoRoute - Carbon Tracking Logistics",
@@ -17,7 +18,7 @@ export default function RootLayout({ children }) {
 
         {/* Vercel live server performance telemetry core block */}
         <Analytics />
-
+        <SpeedInsights />
       </body>
     </html>
   );
