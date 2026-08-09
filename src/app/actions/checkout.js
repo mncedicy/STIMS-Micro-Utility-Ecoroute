@@ -6,6 +6,7 @@ export async function generatePaymentLink(userId, userEmail, priceInCents) {
         return { success: false, error: "Gateway Error: PAYSTACK_SECRET_KEY is missing from EcoRoute .env.local file." };
     }
 
+
     try {
         const payload = {
             email: userEmail.trim().toLowerCase(),
