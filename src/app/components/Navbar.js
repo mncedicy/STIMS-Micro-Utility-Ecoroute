@@ -1,3 +1,4 @@
+// /src/app/components/Navbar.jsx
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -65,6 +66,10 @@ export default function Navbar({ user, activeViewPage, onNavigateViewPage }) {
                                 <div className="absolute right-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-lg shadow-2xl py-1.5 z-50 font-mono text-xs animate-fade-in">
                                     <button type="button" onClick={() => { onNavigateViewPage('dashboard'); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-950 transition-colors uppercase tracking-wider text-slate-400">🏠 Home</button>
                                     <button type="button" onClick={() => { onNavigateViewPage('fleet'); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-950 transition-colors uppercase tracking-wider text-slate-400">🚛 Fleet Assets</button>
+
+                                    {/* FIXED: Added a developer option router shortcut link directly to your Corporate API Panel layout */}
+                                    <button type="button" onClick={() => { onNavigateViewPage('developer_api'); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-950 transition-colors uppercase tracking-wider text-slate-400">💻 Developer API</button>
+
                                     <div className="border-t border-slate-800/60 my-1" />
                                     <button type="button" onClick={handleLogout} className="w-full text-left px-4 py-2 text-rose-500 hover:bg-rose-950/20 transition-colors uppercase tracking-widest text-[10px]">🔒 Log Out</button>
                                 </div>
@@ -74,7 +79,6 @@ export default function Navbar({ user, activeViewPage, onNavigateViewPage }) {
                 </div>
             </div>
 
-            {/* MODIFIED: Changed layout alignment properties to push the leave card modal down safely with a nice top margin anchor row padding (pt-20 items-start) */}
             {isLeaveModalOpen && (
                 <div className="fixed top-0 left-0 right-0 bottom-0 z-[100] flex items-start justify-center p-4 pt-20 bg-slate-950/80 backdrop-blur-md animate-fade-in font-mono">
                     <div className="w-full max-w-sm p-5 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl space-y-4 mx-auto">

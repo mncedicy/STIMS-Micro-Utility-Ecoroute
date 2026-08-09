@@ -1,9 +1,20 @@
+// /src/app/components/ExportModal.jsx
 'use client';
 
 import React, { useState } from 'react';
 import { emailPdfReport } from '@/app/actions/email';
 
-export default function ExportModal({ user, inspectedLogNode, customVehicles = [], onGeneratePdf, onClose, customBulkTextOverride }) {
+export default function ExportModal({
+    user,
+    inspectedLogNode,
+    customVehicles = [],
+    onGeneratePdf,
+    onClose,
+    customBulkTextOverride,
+    startDate,  // Passed from parent to route accurate bulk range parameters
+    endDate,    // Passed from parent to route accurate bulk range parameters
+    selectedFilterVehicleId // Passed from parent to track active dropdown category
+}) {
     const [statusMsg, setStatusMsg] = useState('');
     const [sending, setSending] = useState(false);
 
@@ -23,6 +34,25 @@ export default function ExportModal({ user, inspectedLogNode, customVehicles = [
         if (log.energy_kwh) text += `Electric Power Load:   ${log.energy_kwh} kWh\n`;
         if (log.gas_quantity) text += `Gas Combustion Volume: ${log.gas_quantity} ${log.gas_unit}\n`;
         return text || 'Input Parameters:      Offline system calculation metrics\n';
+    };
+
+    // FIXED: Intercepts local clicks to execute high-utility server-side PDF streams
+    const handleLocalPdfGeneration = () => {
+        if (!user?.id) return alert('⚠️ Active user session reference parameters dropped.');
+
+        let targetDownloadUrl = `/api/export/pdf?userId=${user.id}`;
+
+        // Detect if the user is attempting to print the entire active filtered logs list array batch
+        if (inspectedLogNode?.id?.startsWith('BATCH_INDEX_SET_')) {
+            targetDownloadUrl += `&exportType=bulk&startDate=${startDate}&endDate=${endDate}&filterId=${selectedFilterVehicleId}`;
+        } else {
+            // Standard route fallback targeting a single, isolated transaction row ID
+            targetDownloadUrl += `&exportType=single&logId=${inspectedLogNode.id}`;
+        }
+
+        // Open an independent tab to trigger your pre-optimized server-side PDF compiler stream download
+        window.open(targetDownloadUrl, '_blank');
+        onClose();
     };
 
     const handleEmailOptionClick = async (e) => {
@@ -100,8 +130,25 @@ This document is a certified transaction record from ecoroute.stims.co.za.
                 )}
 
                 <div className="flex flex-col gap-2 pt-1 text-[10px]">
-                    <button type="button" disabled={sending} onClick={() => { onGeneratePdf(); onClose(); }} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center stims-hover-glow cursor-pointer">📥 Print or Save PDF Locally</button>
-                    <button type="button" disabled onClick={handleEmailOptionClick} className="w-full font-medium bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-not-allowed select-none">{sending ? "Sending Email..." : "📧 Email Clean Report File"}</button>
+                    {/* FIXED: Uses your premium server-side PDF generator instead of old browser print-window sheets */}
+                    <button
+                        type="button"
+                        disabled={sending}
+                        onClick={handleLocalPdfGeneration}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center stims-hover-glow cursor-pointer"
+                    >
+                        📥 Print or Save PDF Locally
+                    </button>
+
+                    <button
+                        type="button"
+                        disabled={sending}
+                        onClick={handleEmailOptionClick}
+                        className="w-full font-bold bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer stims-hover-glow"
+                    >
+                        {sending ? "Sending Email..." : "📧 Email Clean Report File"}
+                    </button>
+
                     <button type="button" disabled={sending} onClick={onClose} className="w-full text-slate-500 hover:text-slate-400 text-center py-1 mt-1 transition-colors uppercase text-[9px] tracking-widest">Dismiss Options</button>
                 </div>
             </div>

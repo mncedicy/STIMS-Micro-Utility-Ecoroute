@@ -34,11 +34,13 @@ export default function DispatchForm({
     const [gasType, setGasType] = useState('NATURAL_GAS');
     const [gasUnit, setGasUnit] = useState('m3');
 
+    const todayString = new Date().toISOString().split('T')[0];
+    const [emissionDate, setEmissionDate] = useState(todayString);
+
     // Interface layout tracking triggers
     const [openDropdownKey, setOpenDropdownKey] = useState(null);
     const [dbCountriesList, setDbCountriesList] = useState([]);
 
-    // Custom extracted backend streaming hooks integration
     const {
         originAirportsList,
         destAirportsList,
@@ -46,7 +48,6 @@ export default function DispatchForm({
         fetchAirportsFromDatabase
     } = useAirportSearch(activeTab);
 
-    // Asynchronous Country List Sync initialization
     useEffect(() => {
         const fetchCountriesFromDatabase = async () => {
             try {
@@ -71,20 +72,27 @@ export default function DispatchForm({
     const handleFormSubmit = (e) => {
         e.preventDefault();
 
+        // FIXED INTERFACE VALIDATION: Prevent submissions if raw state falls outside current bounds
+        if (emissionDate > todayString) {
+            return alert(`⚠️ Operational Constraint: Selected entry date cannot be in the future. Max allowed date is ${todayString}.`);
+        }
+
+        const trackingPayload = { emission_date: emissionDate };
+
         if (activeTab === 'vehicle') {
             if (!selectedCustomVehicle) return alert('⚠️ Please select a valid vehicle from your active fleet registration list.');
-            onSubmit({ type: 'vehicle', distance: distance.toString(), unit, vehicle_id: selectedCustomVehicle });
+            onSubmit({ ...trackingPayload, type: 'vehicle', distance: distance.toString(), unit, vehicle_id: selectedCustomVehicle });
         } else if (activeTab === 'shipping') {
-            onSubmit({ type: 'shipping', distance: distance.toString(), unit, cargo_weight: weight.toString(), mass_unit: weightUnit });
+            onSubmit({ ...trackingPayload, type: 'shipping', distance: distance.toString(), unit, cargo_weight: weight.toString(), mass_unit: weightUnit });
         } else if (activeTab === 'flight') {
             if (!depAirport || !destAirport) return alert('⚠️ Please select valid origin and destination terminals from the database dropdown.');
             if (depAirport === destAirport) return alert('⚠️ Flight origin and destination cannot match the same terminal location.');
-            onSubmit({ type: 'flight', passengers: passengers.toString(), origin_iata: depAirport.trim(), dest_iata: destAirport.trim() });
+            onSubmit({ ...trackingPayload, type: 'flight', passengers: passengers.toString(), origin_iata: depAirport.trim(), dest_iata: destAirport.trim() });
         } else if (activeTab === 'electricity') {
             if (!countryCode) return alert('⚠️ Please select a valid target grid region country.');
-            onSubmit({ type: 'electricity', kwh: electricityKwh.toString(), country_code: countryCode.trim().toUpperCase() });
+            onSubmit({ ...trackingPayload, type: 'electricity', kwh: electricityKwh.toString(), country_code: countryCode.trim().toUpperCase() });
         } else if (activeTab === 'gas') {
-            onSubmit({ type: 'gas', quantity: gasQuantity.toString(), gas_type: gasType, gas_unit: gasUnit });
+            onSubmit({ ...trackingPayload, type: 'gas', quantity: gasQuantity.toString(), gas_type: gasType, gas_unit: gasUnit });
         }
     };
 
@@ -119,6 +127,18 @@ export default function DispatchForm({
                     dbCountriesList={dbCountriesList}
                     openDropdownKey={openDropdownKey} setOpenDropdownKey={setOpenDropdownKey}
                 />
+
+                <div className="pt-2 border-t border-slate-900/40">
+                    <label className="block text-slate-500 mb-1 text-[10px] uppercase tracking-widest font-bold">EMISSION OPERATION DATE</label>
+                    <input
+                        type="date"
+                        value={emissionDate}
+                        onChange={(e) => setEmissionDate(e.target.value)}
+                        max={todayString} // FIXED: Injected strict browser calendar max limitation boundary
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                        required
+                    />
+                </div>
 
                 <AuditSubmitButton loading={loading} />
             </form>

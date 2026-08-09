@@ -4,11 +4,14 @@
 import React from 'react';
 
 export default function Ledger({ estimate, isPremium }) {
-    // Dynamic text layout summarizer reads straight from first-class columns
+    // Dynamic text layout summarizer reads straight from first-class columns and raw_payload metadata object contexts
     const renderAuditParametersSummary = (log) => {
         if (!log) return null;
 
         const category = log.category_display?.toLowerCase();
+        // Securely intercept and parse the raw_payload block if passed as a string configuration block
+        const payloadObject = typeof log.raw_payload === 'string' ? JSON.parse(log.raw_payload) : (log.raw_payload || {});
+        const meta = payloadObject?.metadata || {};
 
         return (
             <div className="bg-slate-950/80 border border-slate-850 p-3 rounded-lg text-[11px] text-slate-400 space-y-1.5 font-mono max-w-full">
@@ -16,12 +19,21 @@ export default function Ledger({ estimate, isPremium }) {
                     Verified Audit Input Bounds
                 </span>
 
-                {log.vehicle_id && log.input_distance && (
-                    <div className="flex justify-between border-b border-slate-900 pb-1">
-                        <span>Distance Run:</span>
-                        <span className="text-white font-bold">{log.input_distance} {log.input_unit || 'km'}</span>
-                    </div>
+                {category === 'vehicle' && log.input_distance && (
+                    <>
+                        <div className="flex justify-between border-b border-slate-900 pb-1">
+                            <span>Vehicle Profile:</span>
+                            <span className="text-blue-400 font-bold uppercase truncate max-w-[160px]">
+                                {meta.vehicleProfile || 'Fleet Asset'}
+                            </span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-900 pb-1">
+                            <span>Distance Run:</span>
+                            <span className="text-white font-bold">{log.input_distance} {log.input_unit || 'km'}</span>
+                        </div>
+                    </>
                 )}
+
                 {category === 'shipping' && log.cargo_weight && (
                     <>
                         <div className="flex justify-between border-b border-slate-900 pb-1">
@@ -34,18 +46,30 @@ export default function Ledger({ estimate, isPremium }) {
                         </div>
                     </>
                 )}
-                {category === 'flight' && log.origin_iata && (
+
+                {/* FIXED FLIGHT DATA RESOLUTION MATRIX */}
+                {category === 'flight' && (
                     <>
-                        <div className="flex justify-between border-b border-slate-900 pb-1">
-                            <span>Flight Sector Path:</span>
-                            <span className="text-blue-400 font-bold uppercase">{log.origin_iata} ➔ {log.dest_iata}</span>
+                        <div className="flex flex-col border-b border-slate-900 pb-1 space-y-0.5">
+                            <span className="text-slate-500">Flight Sector Route Path:</span>
+                            {/* Prioritizes the full pre-saved airport textual names, falling back to database codes */}
+                            <span className="text-blue-400 font-bold uppercase tracking-wide leading-tight">
+                                ✈️ {meta.route_display || `${log.origin_iata} - ${log.dest_iata}`}
+                            </span>
                         </div>
+                        {meta.distanceKm && (
+                            <div className="flex justify-between border-b border-slate-900 pb-1">
+                                <span>Spherical Distance:</span>
+                                <span className="text-slate-300 font-bold">{meta.distanceKm} KM</span>
+                            </div>
+                        )}
                         <div className="flex justify-between border-b border-slate-900 pb-1">
                             <span>Passengers Pax:</span>
-                            <span className="text-white font-bold">{log.passengers_count} pax</span>
+                            <span className="text-white font-bold">{log.passengers_count || meta.passengers || 1} pax</span>
                         </div>
                     </>
                 )}
+
                 {category === 'electricity' && log.energy_kwh && (
                     <>
                         <div className="flex justify-between border-b border-slate-900 pb-1">
@@ -58,6 +82,7 @@ export default function Ledger({ estimate, isPremium }) {
                         </div>
                     </>
                 )}
+
                 {category === 'gas' && log.gas_quantity && (
                     <>
                         <div className="flex justify-between border-b border-slate-900 pb-1">
@@ -126,7 +151,8 @@ export default function Ledger({ estimate, isPremium }) {
             {/* Verification Logger Timestamp Anchor */}
             {estimate?.created_at && (
                 <div className="text-[9px] text-slate-600 border-t border-slate-900/60 pt-2 text-right tracking-tight uppercase">
-                    LEDGER STAMP: {new Date(estimate.created_at).toLocaleString('en-ZA')}
+                    {/* FIXED: Formatted to read via user-assigned emission_date parameter value if present */}
+                    JOURNAL DAY: {estimate.emission_date ? new Date(estimate.emission_date).toLocaleDateString('en-ZA') : new Date(estimate.created_at).toLocaleDateString('en-ZA')}
                 </div>
             )}
         </div>

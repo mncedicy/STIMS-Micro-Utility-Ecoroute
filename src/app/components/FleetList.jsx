@@ -1,3 +1,4 @@
+// /src/app/components/FleetList.jsx
 'use client';
 
 import React, { useState } from 'react';
@@ -11,7 +12,6 @@ export default function FleetList({ customVehicles, onVehicleDeleted, isPremium 
         if (!vehicleToDelete) return;
         setDeleting(true);
         try {
-            // Soft delete vehicle configuration state matching original contract rules
             const { error } = await supabase
                 .from('ecoroute_vehicles')
                 .update({ is_active: false })
@@ -28,7 +28,7 @@ export default function FleetList({ customVehicles, onVehicleDeleted, isPremium 
     };
 
     return (
-        <div className="p-5 bg-slate-900/40 border border-slate-800 rounded-xl transition-all duration-300 stims-hover-glow relative group font-mono md:col-span-2">
+        <div className="p-5 bg-slate-900/40 border border-slate-900 rounded-xl transition-all duration-300 stims-hover-glow relative group font-mono md:col-span-2">
             <div className="border-b border-slate-800 pb-2 mb-4 flex items-center justify-between">
                 <h3 className="text-xs uppercase tracking-widest text-blue-500 font-bold">ACTIVE FLEET ASSETS REGISTER</h3>
                 <span className="text-[10px] text-slate-500">COUNT: {customVehicles.length}</span>
@@ -39,6 +39,8 @@ export default function FleetList({ customVehicles, onVehicleDeleted, isPremium 
                     <table className="w-full text-xs text-left text-slate-300">
                         <thead>
                             <tr className="border-b border-slate-900 text-slate-500 text-[10px] uppercase">
+                                {/* FIXED VISUAL FLOW: Placed vehicle_id UUID first in the sorting column layout stack order */}
+                                <th className="py-2">VEHICLE_ID (UUID)</th>
                                 <th className="py-2">REGISTRATION</th>
                                 <th className="py-2">MAKE</th>
                                 <th className="py-2">MODEL</th>
@@ -49,10 +51,14 @@ export default function FleetList({ customVehicles, onVehicleDeleted, isPremium 
                         <tbody className="divide-y divide-slate-900/60">
                             {customVehicles.map((vehicle) => (
                                 <tr key={vehicle.id} className="hover:bg-slate-950/30 transition-colors">
-                                    <td className="py-2.5 font-bold text-blue-400 tracking-wider uppercase">
+                                    {/* FIXED VISUAL FLOW: Primary UUID column leads data item cells mapping with copy-on-select enabled */}
+                                    <td className="py-2.5 font-mono text-[10px] text-blue-500 select-all max-w-[140px] truncate font-bold">
+                                        {vehicle.id}
+                                    </td>
+                                    <td className="py-2.5 font-bold text-slate-200 tracking-wider uppercase">
                                         {vehicle.registration_number || 'N/A'}
                                     </td>
-                                    <td className="py-2.5 text-slate-200">{vehicle.make}</td>
+                                    <td className="py-2.5 text-slate-300">{vehicle.make}</td>
                                     <td className="py-2.5 text-slate-400">{vehicle.model}</td>
                                     <td className="py-2.5 text-slate-500">{vehicle.year}</td>
                                     <td className="py-2.5 text-right">
@@ -75,7 +81,6 @@ export default function FleetList({ customVehicles, onVehicleDeleted, isPremium 
                 </div>
             )}
 
-            {/* Verification confirmation overlays modal view */}
             {vehicleToDelete && (
                 <div className="fixed top-0 left-0 right-0 bottom-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-mono">
                     <div className="w-full max-w-sm p-5 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl space-y-4 mx-auto stims-hover-glow transition-all duration-300">
@@ -90,7 +95,7 @@ export default function FleetList({ customVehicles, onVehicleDeleted, isPremium 
                             </span>
                         </p>
                         <div className="flex space-x-2 pt-2 text-[10px]">
-                            <button type="button" disabled={deleting} onClick={() => setVehicleToDelete(null)} className="flex-1 bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 py-2 rounded transition-colors uppercase tracking-wider cursor-pointer">ABORT ACTION</button>
+                            <button type="button" onClick={() => setVehicleToDelete(null)} className="flex-1 bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 py-2 rounded transition-colors uppercase tracking-wider cursor-pointer">ABORT ACTION</button>
                             <button type="button" disabled={deleting} onClick={executeDeleteNode} className="flex-1 bg-rose-950/30 border border-rose-900 text-rose-400 hover:bg-rose-900 hover:text-white font-bold py-2 rounded transition-all uppercase tracking-wider disabled:opacity-50 cursor-pointer">{deleting ? 'DELETING...' : 'CONFIRM REMOVAL'}</button>
                         </div>
                     </div>

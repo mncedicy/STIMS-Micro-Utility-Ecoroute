@@ -1,22 +1,22 @@
 // /src/app/utils/flightCalculator.js
-import { getCachedAirportCoords } from './airportCache';
+import { createClient } from '@supabase/supabase-js';
 
-// DEFRA Passenger-Kilometer Emission Factors (kg CO2e per km per passenger)
+// Initialize clean administrative access bypass wrapper pipelines
+const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
+
 const FLIGHT_TIERS = {
     DOMESTIC: 0.245,    // Flights < 400 km
     SHORT_HAUL: 0.151,  // Flights between 400 km and 3700 km
     LONG_HAUL: 0.147,   // Flights > 3700 km
 };
 
-// Radiative Forcing Index (RFI) multiplier to account for high-altitude climate impacts
 const RADIATIVE_FORCING_INDEX = 1.9;
 
-/**
- * Calculates the Great Circle Distance using the Haversine Formula
- */
 function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
     const EARTH_RADIUS_KM = 6371;
-
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLon = ((lon2 - lon1) * Math.PI) / 180;
 
@@ -28,46 +28,37 @@ function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
         Math.sin(dLon / 2);
 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return EARTH_RADIUS_KM * c; // Distance in kilometers
+    return EARTH_RADIUS_KM * c;
 }
 
 /**
- * Core Flight Calculation Engine
+ * Enhanced Flight Calculation Engine (Saves textual labels inside the database metadata payload)
  */
-export async function calculateFlightEmissions(originIata, destIata, passengersCount) {
+export async function calculateFlightEmissions(originId, destId, passengersCount) {
     const pCount = parseInt(passengersCount, 10) || 1;
 
-    // Sanitize inbound text values cleanly
-    const startCode = (originIata || '').trim().toUpperCase();
-    const endCode = (destIata || '').trim().toUpperCase();
+    // 1. Concurrently fetch full airport details from your exact ecoroute_static_airports table using indexes
+    const [originRes, destRes] = await Promise.all([
+        supabaseAdmin.from('ecoroute_static_airports').select('name, iso_country, latitude, longitude').eq('id', parseInt(originId, 10)).maybeSingle(),
+        supabaseAdmin.from('ecoroute_static_airports').select('name, iso_country, latitude, longitude').eq('id', parseInt(destId, 10)).maybeSingle()
+    ]);
 
-    // 1. Fetch coordinates from your Supabase static table via cache module
-    const originCoords = await getCachedAirportCoords(startCode);
-    const destCoords = await getCachedAirportCoords(endCode);
-
-    // IMPROVED GLOBAL EXCEPTION CATCH: Return a readable validation error instead of dropping a pipeline crash
-    if (!originCoords && !destCoords) {
-        throw new Error(`Invalid Flight Route: Neither origin [${startCode}] nor destination [${endCode}] airport codes exist in the database.`);
-    }
-    if (!originCoords) {
-        throw new Error(`Invalid Origin: Airport code [${startCode}] not recognized in the aviation database.`);
-    }
-    if (!destCoords) {
-        throw new Error(`Invalid Destination: Airport code [${endCode}] not recognized in the aviation database.`);
-    }
-    if (startCode === endCode) {
-        throw new Error(`Invalid Route: Flight origin and destination cannot match the same terminal location [${startCode}].`);
+    if (!originRes.data || !destRes.data) {
+        throw new Error('Compliance Lookup Failure: Selected airport terminal IDs missing from core database.');
     }
 
-    // 2. Compute true spherical distance
+    const origin = originRes.data;
+    const dest = destRes.data;
+
+    // 2. Compute spherical distance vector paths
     const distanceKm = calculateHaversineDistance(
-        originCoords.lat,
-        originCoords.lon,
-        destCoords.lat,
-        destCoords.lon
+        parseFloat(origin.latitude),
+        parseFloat(origin.longitude),
+        parseFloat(dest.latitude),
+        parseFloat(dest.longitude)
     );
 
-    // 3. Determine distance-tiered emission coefficient
+    // 3. Determine tiered metrics
     let factor = FLIGHT_TIERS.SHORT_HAUL;
     let tierDisplay = 'SHORT_HAUL';
 
@@ -79,18 +70,23 @@ export async function calculateFlightEmissions(originIata, destIata, passengersC
         tierDisplay = 'LONG_HAUL';
     }
 
-    // 4. Run the final carbon calculation formula
-    const carbonKg = distanceKm * factor * pCount * RADIATIVE_FORCING_INDEX;
+    const rawCarbonKg = distanceKm * factor * pCount * RADIATIVE_FORCING_INDEX;
 
+    // 4. Return complete, flattened text summary metadata payload ready for database ingestion
     return {
-        carbonKg: parseFloat(carbonKg.toFixed(3)),
+        carbonKg: rawCarbonKg,
         metadata: {
+            origin_name: origin.name,
+            origin_country: origin.iso_country.toUpperCase(),
+            destination_name: dest.name,
+            destination_country: dest.iso_country.toUpperCase(),
+            route_display: `${origin.name} (${origin.iso_country}) ➔ ${dest.name} (${dest.iso_country})`,
             distanceKm: parseFloat(distanceKm.toFixed(2)),
             flightTier: tierDisplay,
             passengers: pCount,
             factorUsed: factor,
             rfiApplied: RADIATIVE_FORCING_INDEX,
-            route: `${startCode} -> ${endCode}`
+            timestamp: new Date().toISOString()
         }
     };
 }

@@ -1,3 +1,4 @@
+// /src/app/components/DashboardView.jsx
 'use client';
 
 import React, { useState } from 'react';
@@ -25,7 +26,6 @@ export default function DashboardView({
     loadData
 }) {
     const [isPending, setIsPending] = useState(false);
-
 
     const handleCancelSubscription = async () => {
         if (!window.confirm("Are you sure you want to terminate your premium plan contract?")) return;
@@ -92,9 +92,6 @@ export default function DashboardView({
         }
     };
 
-
-
-    // Derived active evaluation state metrics
     const isActivePremium = subscription && subscription.status === 'active' && subscription.tier === 'premium';
 
     return (
@@ -105,12 +102,15 @@ export default function DashboardView({
                 </div>
             )}
 
+            {/* FIXED PROPS: Direct, type-safe data loading for live page metrics tracking */}
             <Header
                 user={user}
                 profile={profile}
                 isPremium={isActivePremium}
                 quotaReached={quotaReached}
                 onSuccess={loadData}
+                currentUsage={estimate?.tokenRecord?.current_monthly_usage || 0}
+                limitCap={isActivePremium ? 3000 : 100}
             />
 
             {errorMsg && (
@@ -160,7 +160,6 @@ export default function DashboardView({
                     </div>
                 </div>
 
-                {/* Dynamic billing coverage expiration info block */}
                 {subscription?.current_period_end && subscription.status === 'active' && (
                     <div className="mb-4 text-[11px] text-slate-400 bg-slate-950/20 border border-slate-800/40 p-2.5 rounded-lg flex justify-between items-center">
                         <span>📅 NEXT RECURRING BILLING CYCLE:</span>

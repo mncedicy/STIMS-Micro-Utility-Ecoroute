@@ -1,3 +1,4 @@
+// /src/app/page.jsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -8,6 +9,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import DashboardView from './components/DashboardView';
 import FleetView from './components/FleetView';
+import CorporateApiPanel from './components/CorporateApiPanel';
 import { supabase } from './lib/supabaseClient';
 
 export default function Home() {
@@ -18,7 +20,7 @@ export default function Home() {
   const [selectedCustomVehicle, setSelectedCustomVehicle] = useState('');
   const [isFleetModalOpen, setIsFleetModalOpen] = useState(false);
   const [distance, setDistance] = useState(100);
-  const [unit, setUnit] = useState('km'); // Default standard metric system
+  const [unit, setUnit] = useState('km');
   const [estimate, setEstimate] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,43 +44,81 @@ export default function Home() {
     return () => { authSub?.unsubscribe(); window.removeEventListener('focus', syncState); };
   }, []);
 
-
-  const loadData = async () => {
+  // FIXED ACTION ROUTINE: Added an optional boolean parameter to check if this is an on-the-fly state refresh pass
+  const loadData = async (isRefreshOnly = false) => {
     if (!user) return;
     try {
-      // Fetch data streams concurrently from Supabase
-      const [prof, sub, cars, logs] = await Promise.all([
+      const [prof, sub, cars, logs, tokenRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-        supabase.from('user_subscriptions').select('tier, status').eq('user_id', user.id).eq('app_id', 'ecoroute').maybeSingle(),
+        supabase.from('user_subscriptions').select('tier, status, current_period_start').eq('user_id', user.id).eq('app_id', 'ecoroute').maybeSingle(),
         supabase.from('ecoroute_vehicles').select('*').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: false }),
-        supabase.from('ecoroute_emissions_logs').select('*').order('created_at', { ascending: false }) // Sorted newest first for scannable timeline items
+        supabase.from('ecoroute_emissions_logs').select('*').eq('user_id', user.id).order('emission_date', { ascending: false }),
+        supabase.from('ecoroute_corporate_api_tokens').select('*').eq('user_id', user?.id).maybeSingle()
       ]);
 
       setProfile(prof.data);
       setSub(sub.data ? { tier: sub.data.tier, status: sub.data.status } : { tier: 'free', status: 'inactive' });
       setCustomVehicles(cars.data || []);
-      setRawLogsArray(logs.data || []);
-      if (logs.data) setHistory(logs.data.map(l => ({ carbon_kg: l.carbon_kg, estimated_at: l.created_at })));
+
+      const allLogs = logs.data || [];
+      setRawLogsArray(allLogs);
+
+      // FIXED SEPARATION: Only apply the initialization placeholder layout state if this is the first page load
+      if (!isRefreshOnly) {
+        if (tokenRes.data) {
+          setEstimate({
+            category_display: 'INITIALIZATION',
+            tokenRecord: tokenRes.data
+          });
+        }
+      } else {
+        // If it is a refresh after a calculation, update the active token metrics inside your current report panel
+        if (tokenRes.data && estimate && estimate.category_display !== 'INITIALIZATION') {
+          setEstimate(prev => ({
+            ...prev,
+            tokenRecord: tokenRes.data
+          }));
+        }
+      }
+
+      // Chronological current-month date trimming layout grouping boundaries
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
+      const lastDayInMonth = new Date(currentYear, today.getMonth() + 1, 0).getDate();
+
+      const startBoundsStr = `${currentYear}-${currentMonth}-01`;
+      const endBoundsStr = `${currentYear}-${currentMonth}-${String(lastDayInMonth).padStart(2, '0')}`;
+
+      if (logs.data) {
+        const currentMonthLogs = allLogs.filter(l => {
+          const d = l.emission_date;
+          return d && d >= startBoundsStr && d <= endBoundsStr;
+        });
+
+        setHistory(currentMonthLogs.map(l => ({
+          carbon_kg: l.carbon_kg,
+          estimated_at: l.emission_date
+        })));
+      }
     } catch (err) {
-      console.error('EcoRoute core ledger data loading exception:', err);
+      console.error('EcoRoute core data load exception:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { if (user) loadData(); }, [user]);
+  // First page mount triggers normal initial loading
+  useEffect(() => { if (user) loadData(false); }, [user]);
 
   async function handleCalculate(formPayload) {
     setCalcLoading(true);
     setErrorMsg('');
 
     try {
-      // FIX AUTHENTICATION HEADER EXTRACTION PATHWAY:
-      // Try extracting live access token directly from active memory session variables first
       const { data: currentSessionData } = await supabase.auth.getSession();
       let accessToken = currentSessionData?.session?.access_token || '';
 
-      // Fallback cleanly to localStorage object lookups if memory bounds are missing
       if (!accessToken) {
         const localSsoSessionString = window.localStorage.getItem('stims-enterprise-sso');
         if (localSsoSessionString) {
@@ -87,7 +127,6 @@ export default function Home() {
         }
       }
 
-      // Dispatch parameters into your internal offline endpoint handler with auth headers attached
       const res = await fetch('/api/estimates', {
         method: 'POST',
         headers: {
@@ -100,8 +139,11 @@ export default function Home() {
       const result = await res.json();
       if (!res.ok || result.error) throw new Error(result.error || 'Offline calculation execution rejected.');
 
+      // Update state directly from clean response return
       setEstimate(result.data);
-      await loadData(); // Force data refresh across timeline history charts matrix
+
+      // FIXED: Pass true to let loadData know this is a refresh only, keeping your numbers visible
+      await loadData(true);
     } catch (err) {
       console.error('EcoRoute Pipeline calculation error tracking:', err.message);
       setErrorMsg(err.message || 'Processing logistical parameters failed.');
@@ -146,6 +188,11 @@ export default function Home() {
               subscription={subscription}
               loadData={loadData}
               setIsFleetModalOpen={setIsFleetModalOpen}
+            />
+          ) : activeViewPage === 'developer_api' ? (
+            <CorporateApiPanel
+              user={user}
+              isPremium={isPremium}
             />
           ) : (
             <div className="space-y-6">

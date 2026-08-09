@@ -35,15 +35,17 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Unauthorized user access' }, { status: 401 });
         }
 
-        // 1. Fetch token record and user corporate details concurrently
-        const [prof, tokenQuery] = await Promise.all([
-            supabaseAdmin.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-            supabaseAdmin.from('ecoroute_corporate_api_tokens').select('*').eq('user_id', user.id).maybeSingle()
-        ]);
+        // 1. Fetch token record independently of subscription table states
+        const { data: tokenRecord } = await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .select('*')
+            .eq('user_id', user.id)
+            .maybeSingle();
 
-        const currentUsageCount = tokenQuery.data?.current_monthly_usage || 0;
-        const capacityLimitBounds = tokenQuery.data?.usage_limit_cap || 100;
+        const currentUsageCount = tokenRecord?.current_monthly_usage || 0;
+        const capacityLimitBounds = tokenRecord?.usage_limit_cap || 100;
 
+        // FIXED VALIDATION GUARD: Protect limits uniformly for both Free and Premium tiers
         if (currentUsageCount >= capacityLimitBounds) {
             return NextResponse.json({
                 error: `Quota Blocked: Monthly request volume exhausted. Current limit: ${currentUsageCount}/${capacityLimitBounds} requests. Upgrade account tier to extend limits.`
@@ -61,7 +63,7 @@ export async function POST(req) {
 
         const resolvedEmissionDate = body.emission_date && /^\d{4}-\d{2}-\d{2}$/.test(body.emission_date)
             ? body.emission_date
-            : new Date().toISOString().split('T')[0];
+            : new Date().toISOString().split('T');
 
         // 2. Persist emissions calculation log
         const { data: dbLogEntry, error: dbWriteError } = await supabaseAdmin
@@ -87,8 +89,8 @@ export async function POST(req) {
                 energy_kwh: cleanType === 'electricity' ? parseFloat(body.kwh) : null,
                 country_code: cleanType === 'electricity' ? body.country_code?.toUpperCase() : null,
                 gas_quantity: cleanType === 'gas' ? parseFloat(body.quantity) : null,
-                gas_type: body.gas_type || 'NATURAL_GAS',
-                gas_unit: body.gas_unit || 'm3',
+                gas_type: cleanType === 'gas' ? body.gas_type : null,
+                gas_unit: cleanType === 'gas' ? body.gas_unit : null,
                 emission_date: resolvedEmissionDate,
 
                 raw_payload: {
@@ -112,26 +114,21 @@ export async function POST(req) {
 
         // 3. Atomically update usage tracks across all plan configurations
         const nextUsageCountValue = currentUsageCount + 1;
-        const currentPeriodKey = tokenQuery.data?.last_reset_period || new Date().toISOString().split('T')[0];
-
-        // Resolve real-time name matching rules
-        const resolvedEnterpriseName = prof.data?.company?.trim()
-            ? prof.data.company.trim()
-            : `${prof.data?.first_name || 'Independent'} ${prof.data?.surname || 'Enterprise'}`.trim();
-
-        await supabaseAdmin
+        const { data: updatedToken } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .upsert({
-                id: tokenQuery.data?.id || undefined,
+                id: tokenRecord?.id || undefined,
                 user_id: user.id,
-                organization_name: resolvedEnterpriseName, // FIXED
-                api_token: tokenQuery.data?.api_token || 'ecoroute_live_init',
+                organization_name: tokenRecord?.organization_name || 'Independent Enterprise',
+                api_token: tokenRecord?.api_token || 'ecoroute_live_init',
                 current_monthly_usage: nextUsageCountValue,
                 usage_limit_cap: capacityLimitBounds,
-                last_reset_period: currentPeriodKey, // FIXED: Strict standard format
+                last_reset_period: tokenRecord?.last_reset_period || new Date().toISOString().split('T'),
                 is_active: true,
                 updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id' });
+            }, { onConflict: 'user_id' })
+            .select()
+            .single();
 
         try {
             revalidatePath('/');
@@ -142,12 +139,7 @@ export async function POST(req) {
 
         const responseData = {
             ...dbLogEntry,
-            tokenRecord: {
-                ...tokenQuery.data,
-                current_monthly_usage: nextUsageCountValue,
-                last_reset_period: currentPeriodKey,
-                organization_name: resolvedEnterpriseName
-            }
+            tokenRecord: updatedToken
         };
 
         return NextResponse.json({ success: true, data: responseData }, { status: 200 });
