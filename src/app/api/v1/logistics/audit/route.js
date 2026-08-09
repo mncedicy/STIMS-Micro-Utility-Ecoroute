@@ -1,7 +1,7 @@
 // /src/app/api/estimates/route.js
 import { NextResponse } from 'next/server';
 import { getEstimatesSupabaseClient } from '../estimates/supabaseClient';
-import { processCategoryEmissions } from './categoryPipeline';
+import { processCategoryEmissions } from '../estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
