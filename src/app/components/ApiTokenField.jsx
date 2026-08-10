@@ -1,34 +1,71 @@
 // /src/app/components/ApiTokenField.jsx
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 
-export default function ApiTokenField({ token, revealToken, setRevealToken, handleCopy, copySuccess }) {
+export default function ApiTokenField({ tokenData, resetting, onResetPrompt }) {
+    const [revealToken, setRevealToken] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    async function handleCopyToClipboard() {
+        if (!tokenData?.api_token) return;
+        try {
+            await navigator.clipboard.writeText(tokenData.api_token);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error('[Token Clipboard Write Failure]:', err);
+        }
+    }
+
     return (
-        <div className="space-y-1.5 font-mono">
-            <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest block mb-1.5">X-API-TOKEN AUTHORIZATION BEARER</label>
-            <div className="flex gap-2">
+        <div className="p-4 bg-slate-900/20 border border-slate-800 rounded-lg space-y-2 font-mono text-xs">
+            <label className="block text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+                YOUR SECRET INTEGRATION BEARER TOKEN
+            </label>
+            <div className="flex items-center gap-2">
                 <input
-                    type={revealToken ? "text" : "password"}
-                    value={token}
+                    type={revealToken ? 'text' : 'password'}
+                    value={tokenData?.api_token || ''}
                     readOnly
-                    className="w-full bg-[#020617] border border-slate-900 focus:border-slate-800 rounded-lg px-3 py-2 text-xs text-blue-400 font-bold font-mono tracking-wide select-all outline-none"
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-300 outline-none tracking-wide select-all"
                 />
+
+                {/* REVEAL ACTION BUTTON */}
                 <button
                     type="button"
                     onClick={() => setRevealToken(!revealToken)}
-                    className="bg-slate-950 border border-slate-800 text-slate-300 hover:text-white px-3.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none shrink-0"
+                    title={revealToken ? 'Hide Token' : 'Reveal Token'}
+                    className="border border-slate-800 text-slate-300 hover:text-white h-8 w-8 flex items-center justify-center rounded bg-slate-950 shrink-0 cursor-pointer transition-colors"
                 >
-                    {revealToken ? "HIDE" : "SHOW"}
+                    {revealToken ? '🔒' : '👁️'}
                 </button>
+
+                {/* CLIPBOARD EXTRACTION BUTTON */}
                 <button
                     type="button"
-                    onClick={handleCopy}
-                    className="bg-slate-950 border border-slate-800 text-slate-300 hover:text-white px-3.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none shrink-0"
+                    onClick={handleCopyToClipboard}
+                    title="Copy Token"
+                    className={`border h-8 px-3 flex items-center justify-center gap-1.5 rounded uppercase font-bold text-[10px] tracking-wider bg-slate-950 shrink-0 cursor-pointer transition-colors ${copied ? 'border-green-800 text-green-400 bg-green-950/10' : 'border-slate-800 text-slate-300 hover:text-white'
+                        }`}
                 >
-                    {copySuccess ? "COPIED" : "COPY"}
+                    {copied ? '✅ COPIED' : '📋 COPY'}
+                </button>
+
+                {/* DESTRUCTIVE ACTION RESET ENGINE BUTTON */}
+                <button
+                    type="button"
+                    onClick={onResetPrompt}
+                    disabled={resetting}
+                    title="Reset Token"
+                    className="border border-red-900 text-red-400 hover:text-red-300 disabled:text-slate-600 disabled:border-slate-900 h-8 px-3 rounded uppercase font-bold text-[10px] tracking-wider bg-slate-950 shrink-0 cursor-pointer hover:bg-red-950/10 transition-colors"
+                >
+                    {resetting ? '♻️' : '🔄 RESET'}
                 </button>
             </div>
+            <p className="text-[9px] text-slate-500 italic leading-tight">
+                Keep this access signature token safe. Do not leak credentials inside front-facing source code client browsers.
+            </p>
         </div>
     );
 }

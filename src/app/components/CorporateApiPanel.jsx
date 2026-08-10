@@ -5,13 +5,15 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import ApiUsageBar from './ApiUsageBar';
 import ApiSnippetCard from './ApiSnippetCard';
+import SystemDialogModal from './SystemDialogModal';
+import ApiTokenField from './ApiTokenField';
 
 export default function CorporateApiPanel({ user, isPremium }) {
     const [tokenData, setTokenData] = useState(null);
-    const [revealToken, setRevealToken] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [resetting, setResetting] = useState(false);
+    const [modal, setModal] = useState({ isOpen: false, status: 'blue', title: '', message: '', hasCancel: false });
 
-    // FIXED AUTO-FETCH LAYOUT: Queries the token registry table row directly from memory on mount to prevent estimate parameter undefined exceptions
     useEffect(() => {
         async function fetchActiveUserDeveloperToken() {
             if (!user?.id) return;
@@ -22,9 +24,7 @@ export default function CorporateApiPanel({ user, isPremium }) {
                     .eq('user_id', user.id)
                     .maybeSingle();
 
-                if (!error && data) {
-                    setTokenData(data);
-                }
+                if (!error && data) setTokenData(data);
             } catch (err) {
                 console.error('[Corporate Api Panel Hydration Crash]:', err);
             } finally {
@@ -33,6 +33,38 @@ export default function CorporateApiPanel({ user, isPremium }) {
         }
         fetchActiveUserDeveloperToken();
     }, [user]);
+
+    async function executeTokenResetRoutine() {
+        setModal(prev => ({ ...prev, isOpen: false }));
+        setResetting(true);
+        try {
+            const secureHexKey = 'ecoroute_live_' + Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+
+            const { data, error } = await supabase
+                .from('ecoroute_corporate_api_tokens')
+                .update({ api_token: secureHexKey, updated_at: new Date().toISOString() })
+                .eq('id', tokenData.id)
+                .eq('user_id', user.id)
+                .select().single();
+
+            if (error) throw error;
+            if (data) {
+                setTokenData(data);
+                setModal({
+                    isOpen: true, status: 'green', title: 'SIGNATURE GENERATION SUCCESS', hasCancel: false,
+                    message: 'Remote access credential updated. Ensure your server environment keys match the newly provisioned hash signature layout immediately.'
+                });
+            }
+        } catch (err) {
+            setModal({
+                isOpen: true, status: 'red', title: 'MODIFICATION STATE ERROR', hasCancel: false,
+                message: `FAILED TO MERGE SIGNATURE STATE: ${err.message}`
+            });
+        } finally {
+            setResetting(false);
+        }
+    }
 
     if (loading) {
         return (
@@ -44,53 +76,50 @@ export default function CorporateApiPanel({ user, isPremium }) {
 
     return (
         <div className="space-y-6 w-full font-mono animate-fade-in relative text-xs">
-            {/* Upper Content Section Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-900 pb-4">
                 <div>
                     <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200">CORPORATE API CONFIGURATION PANEL</h2>
                     <p className="text-[11px] text-slate-500 leading-tight">Integrate carbon accounting calculations directly into your multi-modal ERP dispatch scripts.</p>
                 </div>
-                <span className={`text-[9px] px-2 py-1 rounded border self-start sm:self-center uppercase font-bold tracking-widest font-mono ${isPremium ? 'border-blue-500/30 text-blue-400 bg-blue-950/20' : 'border-slate-800 text-slate-500 bg-slate-950/40'}`}>
+                <span className={`text-[9px] px-2 py-1 rounded border uppercase font-bold tracking-widest ${isPremium ? 'border-blue-500/30 text-blue-400 bg-blue-950/20' : 'border-slate-800 text-slate-500 bg-slate-950/40'}`}>
                     {isPremium ? 'ENTERPRISE API ACCESS' : 'SANDBOX CONSTRAINED'}
                 </span>
             </div>
 
             {tokenData ? (
                 <div className="space-y-4">
-                    {/* FIXED: Passes the securely resolved tokenData row straight into your updated ApiUsageBar component */}
                     <ApiUsageBar tokenRecord={tokenData} />
 
-                    {/* Secret Token Field Output Panel */}
-                    <div className="p-4 bg-slate-900/20 border border-slate-800 rounded-lg space-y-2">
-                        <label className="block text-slate-500 text-[10px] uppercase font-bold tracking-widest">YOUR SECRET INTEGRATION BEARER TOKEN</label>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <input
-                                type={revealToken ? 'text' : 'password'}
-                                value={tokenData.api_token || ''}
-                                readOnly
-                                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-300 font-mono text-xs outline-none tracking-wide select-all"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setRevealToken(!revealToken)}
-                                className="border border-slate-800 text-slate-300 hover:text-white px-4 py-2 rounded uppercase font-bold text-[10px] tracking-wider transition-colors cursor-pointer bg-slate-950 whitespace-nowrap shrink-0"
-                            >
-                                {revealToken ? '🔒 Hide Token' : '👁️ Reveal Token'}
-                            </button>
-                        </div>
-                        <p className="text-[9px] text-slate-500 italic leading-tight">Keep this access signature token safe. Do not leak credentials inside front-facing source code client browsers.</p>
-                    </div>
+                    {/* RENDER NEW EXTRACTED ELEMENT MODULE */}
+                    <ApiTokenField
+                        tokenData={tokenData}
+                        resetting={resetting}
+                        onResetPrompt={() => setModal({
+                            isOpen: true,
+                            status: 'blue',
+                            title: 'TOKEN RESET WARNING',
+                            message: 'Resetting this secret bearer token will immediately break all live applications, server integrations, and enterprise route systems running on this token footprint. Proceed?',
+                            hasCancel: true
+                        })}
+                    />
 
-                    {/* Interactive Code Blueprint Documentation Snippet Component */}
                     <ApiSnippetCard userId={user?.id} />
                 </div>
             ) : (
-                <div className="text-center py-10 text-slate-600 border border-dashed border-slate-800 rounded-xl bg-slate-950/10">
-                    <div className="max-w-xs mx-auto leading-relaxed uppercase tracking-wider text-[10px]">
-                        ⚠️ NO ACTIVE API RECORD DETECTED. RE-ROUTE TO THE DASHBOARD PANEL VIEW TO INITIALIZE COMPLIANCE LOGS ACCESS CHANNELS.
-                    </div>
+                <div className="text-center py-10 text-slate-600 border border-dashed border-slate-800 rounded-xl bg-slate-950/10 uppercase tracking-wider text-[10px]">
+                    ⚠️ NO ACTIVE API RECORD DETECTED. RE-ROUTE TO THE DASHBOARD PANEL VIEW TO INITIALIZE COMPLIANCE LOGS ACCESS CHANNELS.
                 </div>
             )}
+
+            <SystemDialogModal
+                isOpen={modal.isOpen}
+                status={modal.status}
+                title={modal.title}
+                message={modal.message}
+                confirmText={modal.hasCancel ? "CONFIRM RESET" : "ACKNOWLEDGE"}
+                onConfirm={modal.hasCancel ? executeTokenResetRoutine : () => setModal(prev => ({ ...prev, isOpen: false }))}
+                onCancel={modal.hasCancel ? () => setModal(prev => ({ ...prev, isOpen: false })) : null}
+            />
         </div>
     );
 }

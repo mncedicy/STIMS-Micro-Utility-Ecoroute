@@ -119,16 +119,21 @@ export async function POST(req) {
             ? prof.data.company.trim()
             : `${prof.data?.first_name || 'Independent'} ${prof.data?.surname || 'Enterprise'}`.trim();
 
+        // FIXED CRYPTOGRAPHIC GENERATOR: Instantiated securely ahead of transactional updates
+        const secureHexKey = 'ecoroute_live_' + Array.from(crypto.getRandomValues(new Uint8Array(16)))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+
+        // FIXED UPSERT ROUTINE LAYER: Safely integrates your signature variables loop layout
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .upsert({
                 id: tokenQuery.data?.id || undefined,
                 user_id: user.id,
-                organization_name: resolvedEnterpriseName, // FIXED
-                api_token: tokenQuery.data?.api_token || 'ecoroute_live_init',
+                organization_name: resolvedEnterpriseName,
+                api_token: tokenQuery.data?.api_token || secureHexKey,
                 current_monthly_usage: nextUsageCountValue,
                 usage_limit_cap: capacityLimitBounds,
-                last_reset_period: currentPeriodKey, // FIXED: Strict standard format
+                last_reset_period: currentPeriodKey,
                 is_active: true,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'user_id' });
