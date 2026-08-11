@@ -1,10 +1,9 @@
-// /src/app/api/logistics/import-csv/route.js
+// /src/app/api/v1/logistics/audit/route.js
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { processCategoryEmissions } from '../../estimates/categoryPipeline';
+import { processCategoryEmissions } from '../../../estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
-import { parseCSVTextToJSON } from './csvTextEngine';
-import { sanitizeCountryCode } from './parameterGuard';
+import { sanitizeCountryCode } from '../../import-csv/parameterGuard';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -13,191 +12,172 @@ const supabaseAdmin = createClient(
 
 export async function POST(req) {
     try {
+        // 1. Authenticate Request via Bearer Authorization Header
         const authHeader = req.headers.get('authorization') || '';
-        const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : '';
-        const isStrictValidationMode = req.headers.get('x-strict-validation') === 'true';
-
-        // Validate active session
-        const { data: { user }, error: authError } = await createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-        ).auth.getUser(bearerToken);
-
-        if (authError || !user) {
-            return NextResponse.json({ error: 'Unauthorized user access credentials.' }, { status: 401 });
+        if (!authHeader.startsWith('Bearer ')) {
+            return NextResponse.json({
+                error: 'Missing or malformed Authorization header. Use format: Bearer ecoroute_live_...'
+            }, { status: 401 });
         }
 
-        const formData = await req.formData();
-        const file = formData.get('file');
+        const extractedApiToken = authHeader.substring(7).trim();
 
-        if (!file) {
-            return NextResponse.json({ error: 'Missing attachment file parameter.' }, { status: 400 });
-        }
-
-        const rawText = await file.text();
-        const parsedRows = parseCSVTextToJSON(rawText);
-
-        if (parsedRows.length === 0) {
-            return NextResponse.json({ error: 'Spreadsheet contains empty blocks or missing header criteria.' }, { status: 400 });
-        }
-
-        // Fetch user quotas limits
-        const { data: tokenRecord } = await supabaseAdmin
+        // Query token allocation record natively to find matching corporate tenant profile node
+        const { data: tokenRecord, error: tokenError } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('api_token', extractedApiToken)
+            .eq('is_active', true)
             .maybeSingle();
 
-        let currentUsage = tokenRecord?.current_monthly_usage || 0;
-        const limitCap = tokenRecord?.usage_limit_cap || 100;
-
-        if (currentUsage + parsedRows.length > limitCap && isStrictValidationMode) {
+        if (tokenError || !tokenRecord) {
             return NextResponse.json({
-                error: `Strict Batch Rejection: This spreadsheet contains ${parsedRows.length} transactions, which exceeds your remaining quota slot capacity (${limitCap - currentUsage} left).`
+                error: 'Invalid or deactivated programmatic bearer authentication token.'
+            }, { status: 401 });
+        }
+
+        // 2. Enforce Volumetric Multitenant Quota Limits Caps
+        const currentUsage = tokenRecord.current_monthly_usage || 0;
+        const limitCapacityCap = tokenRecord.usage_limit_cap || 100;
+
+        if (currentUsage >= limitCapacityCap) {
+            return NextResponse.json({
+                error: `Volumetric Quota Reached: Monthly programmatic capacity exhausted (${currentUsage}/${limitCapacityCap}). Upgrade your licensing contract plane.`
             }, { status: 429 });
         }
 
-        // Pull existing logs indices to perform fast duplicate screening in non-strict mode
-        const { data: existingLogs } = await supabaseAdmin
+        // 3. Ingest and Parse JSON Payload Fields
+        const body = await req.json();
+        const type = body.type || body.category;
+
+        if (!type) {
+            return NextResponse.json({
+                error: 'Mandatory tracking payload property key "type" (or "category") is missing.'
+            }, { status: 400 });
+        }
+
+        const cleanType = type.toLowerCase().trim();
+
+        // Dynamic configuration toggle parameter allowing dry-run test loops with zero log persistence
+        const isDryRunOptionActive = body.dry_run === true || req.headers.get('x-dry-run') === 'true';
+
+        // 4. Sanitize Input Parameter Formats Defensively
+        const countryToken = sanitizeCountryCode(body.country || body.country_code);
+
+        const computationForm = {
+            type: cleanType,
+            distance: body.distance || '0',
+            unit: body.unit || 'km',
+            vehicle_id: body.vehicle_id || null,
+            origin_iata: body.origin || body.origin_iata || null,
+            dest_iata: body.destination || body.dest_iata || null,
+            passengers: body.passengers || '1',
+            cargo_weight: body.cargo_weight || '0',
+            mass_unit: body.mass_unit || 'kg',
+            kwh: body.kwh || '0',
+            country_code: countryToken,
+            quantity: body.quantity || '0',
+            gas_type: body.gas_type || 'NATURAL_GAS',
+            gas_unit: body.gas_unit || 'm3'
+        };
+
+        // 5. Execute Greenhouse Gas Core Emissions Pipeline Formula Matrix Calculations
+        // Generate dummy bearer anchor fallback reference token if calculating via internal sub-app contexts
+        const authUserToken = extractedApiToken;
+        const { calculatedKg, metadataLog } = await processCategoryEmissions(cleanType, computationForm, authUserToken);
+        const conversionsPayload = formatEmissionPayload(calculatedKg);
+
+        const resolvedEmissionDate = body.date && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+            ? body.date
+            : new Date().toISOString().split('T')[0];
+
+        // 6. Abort Persistence Step Safely if Dry-Run Testing Toggles are Passed
+        if (isDryRunOptionActive) {
+            return NextResponse.json({
+                success: true,
+                dry_run: true,
+                message: "Programmatic calculation successful. Record omitted from database logs history trail per dry-run parameters execution rules.",
+                data: {
+                    type: cleanType.toUpperCase(),
+                    emission_date: resolvedEmissionDate,
+                    ...conversionsPayload,
+                    calculation_metadata: metadataLog
+                }
+            }, { status: 200 });
+        }
+
+        // 7. Persist Valid Ingestion Audit Row
+        const { data: dbLogEntry, error: dbWriteError } = await supabaseAdmin
             .from('ecoroute_emissions_logs')
-            .select('batch_manifest_row_id')
-            .eq('user_id', user.id)
-            .not('batch_manifest_row_id', 'is', null);
+            .insert({
+                user_id: tokenRecord.user_id,
+                vehicle_id: cleanType === 'vehicle' ? computationForm.vehicle_id : null,
+                category_display: cleanType.toUpperCase(),
+                carbon_kg: conversionsPayload.carbon_kg,
+                carbon_g: conversionsPayload.carbon_g,
+                carbon_mt: conversionsPayload.carbon_mt,
+                carbon_lb: conversionsPayload.carbon_lb,
+                input_distance: ['vehicle', 'shipping'].includes(cleanType) ? parseFloat(computationForm.distance) : null,
+                input_unit: ['vehicle', 'shipping'].includes(cleanType) ? computationForm.unit : null,
+                origin_iata: cleanType === 'flight' ? computationForm.origin_iata?.substring(0, 3).toUpperCase() : null,
+                dest_iata: cleanType === 'flight' ? computationForm.dest_iata?.substring(0, 3).toUpperCase() : null,
+                passengers_count: cleanType === 'flight' ? parseInt(computationForm.passengers, 10) : null,
+                cargo_weight: cleanType === 'shipping' ? parseFloat(computationForm.cargo_weight) : null,
+                mass_unit: cleanType === 'shipping' ? computationForm.mass_unit : null,
+                energy_kwh: cleanType === 'electricity' ? parseFloat(computationForm.kwh) : null,
+                country_code: countryToken,
+                gas_quantity: cleanType === 'gas' ? parseFloat(computationForm.quantity) : null,
+                gas_type: cleanType === 'gas' ? computationForm.gas_type : null,
+                gas_unit: cleanType === 'gas' ? computationForm.gas_unit : null,
+                emission_date: resolvedEmissionDate,
+                log_source_channel: 'PROGRAMMATIC_B2B_API',
+                batch_manifest_row_id: body.reference_id || body.manifest_id || `api_dispatch_${Date.now()}`,
+                raw_payload: { ...conversionsPayload, metadata: metadataLog }
+            })
+            .select()
+            .single();
 
-        const existingRefIdsSet = new Set(existingLogs?.map(l => l.batch_manifest_row_id) || []);
-
-        // FIXED INTERCEPTOR: Track Reference_IDs INSIDE this current file to catch duplicates before they hit the database
-        const localFileRefIdsSet = new Set();
-
-        const dynamicLogsPayloads = [];
-        let rowsProcessedCount = 0;
-        let skipErrorRowsCount = 0;
-        let activeLineIndex = 1;
-
-        for (const row of parsedRows) {
-            activeLineIndex++;
-            if (currentUsage >= limitCap && !isStrictValidationMode) break;
-
-            const userProvidedRefId = row.reference_id || row.manifest_id || row.row_id;
-            const uniqueReferenceKey = userProvidedRefId
-                ? userProvidedRefId.trim()
-                : `auto_line_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}_${activeLineIndex}`;
-
-            // FIXED SIMPLE ENGLISH ERROR PROMPT: Catches matching values inside the same spreadsheet file instantly
-            if (localFileRefIdsSet.has(uniqueReferenceKey)) {
-                return NextResponse.json({
-                    error: `Spreadsheet Error: You have used the Reference ID "${uniqueReferenceKey}" more than once in this file (checked near line ${activeLineIndex}). Please make sure every row has a completely different Reference ID number and try uploading again.`
-                }, { status: 422 });
-            }
-            localFileRefIdsSet.add(uniqueReferenceKey);
-
-            if (!isStrictValidationMode && existingRefIdsSet.has(uniqueReferenceKey)) {
-                continue;
-            }
-
-            try {
-                const type = row.type || row.category;
-                if (!type) throw new Error('Mandatory tracking column "Type" is blank or missing.');
-
-                const cleanType = type.toLowerCase().trim();
-                const countryToken = sanitizeCountryCode(row.country || row.country_code);
-
-                const computationForm = {
-                    type: cleanType,
-                    distance: row.distance || '0',
-                    unit: row.unit || 'km',
-                    vehicle_id: row.vehicle_id || null,
-                    origin_iata: row.origin || row.origin_iata || null,
-                    dest_iata: row.destination || row.dest_iata || null,
-                    passengers: row.passengers || '1',
-                    cargo_weight: row.cargo_weight || '0',
-                    mass_unit: row.mass_unit || 'kg',
-                    kwh: row.kwh || '0',
-                    country_code: countryToken,
-                    quantity: row.quantity || '0',
-                    gas_type: row.gas_type || 'NATURAL_GAS',
-                    gas_unit: row.gas_unit || 'm3'
-                };
-
-                const { calculatedKg, metadataLog } = await processCategoryEmissions(cleanType, computationForm, bearerToken);
-                const conversions = formatEmissionPayload(calculatedKg);
-
-                const resolvedDate = row.date && /^\d{4}-\d{2}-\d{2}$/.test(row.date)
-                    ? row.date
-                    : new Date().toISOString().split('T');
-
-                dynamicLogsPayloads.push({
-                    user_id: user.id,
-                    vehicle_id: cleanType === 'vehicle' ? computationForm.vehicle_id : null,
-                    category_display: cleanType.toUpperCase(),
-                    carbon_kg: conversions.carbon_kg,
-                    carbon_g: conversions.carbon_g,
-                    carbon_mt: conversions.carbon_mt,
-                    carbon_lb: conversions.carbon_lb,
-                    input_distance: ['vehicle', 'shipping'].includes(cleanType) ? parseFloat(computationForm.distance) : null,
-                    input_unit: ['vehicle', 'shipping'].includes(cleanType) ? computationForm.unit : null,
-                    origin_iata: cleanType === 'flight' ? computationForm.origin_iata?.substring(0, 3).toUpperCase() : null,
-                    dest_iata: cleanType === 'flight' ? computationForm.dest_iata?.substring(0, 3).toUpperCase() : null,
-                    passengers_count: cleanType === 'flight' ? parseInt(computationForm.passengers, 10) : null,
-                    cargo_weight: cleanType === 'shipping' ? parseFloat(computationForm.cargo_weight) : null,
-                    mass_unit: cleanType === 'shipping' ? computationForm.mass_unit : null,
-                    energy_kwh: cleanType === 'electricity' ? parseFloat(computationForm.kwh) : null,
-                    country_code: countryToken,
-                    gas_quantity: cleanType === 'gas' ? parseFloat(computationForm.quantity) : null,
-                    gas_type: cleanType === 'gas' ? computationForm.gas_type : null,
-                    gas_unit: cleanType === 'gas' ? computationForm.gas_unit : null,
-                    emission_date: resolvedDate,
-                    log_source_channel: 'SPREADSHEET_BATCH_UPLOAD',
-                    batch_manifest_row_id: uniqueReferenceKey,
-                    raw_payload: { ...conversions, metadata: metadataLog }
-                });
-
-                rowsProcessedCount++;
-                currentUsage++;
-
-            } catch (rowErr) {
-                if (isStrictValidationMode) {
-                    return NextResponse.json({
-                        error: `Strict Validation Crash: Ingestion aborted. Line entry #${activeLineIndex} failed: ${rowErr.message}`
-                    }, { status: 422 });
-                }
-                skipErrorRowsCount++;
-            }
+        if (dbWriteError) {
+            return NextResponse.json({ error: `Database write operation rejected: ${dbWriteError.message}` }, { status: 500 });
         }
 
-        // Commit valid logs using upsert rules
-        if (dynamicLogsPayloads.length > 0) {
-            const { error: batchInsertError } = await supabaseAdmin
-                .from('ecoroute_emissions_logs')
-                .upsert(dynamicLogsPayloads, { onConflict: 'user_id, batch_manifest_row_id' });
+        // 8. Update Multi-Region Carbon Tax Financial Accruals & Atomically Advance Usage Quota
+        const { data: appMetaRes } = await supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle();
+        const taxRatePerTon = parseFloat(appMetaRes?.carbon_tax_rate_zar_per_tonne || 190.00);
+        const freeAllowancePercent = parseFloat(appMetaRes?.carbon_tax_free_allowance_percentage || 60.00);
 
-            // FIXED SYSTEM RESTRICTION INTERCEPTOR: Translates raw database panic strings into simple, universal English
-            if (batchInsertError) {
-                if (batchInsertError.message?.includes('cannot affect row a second time')) {
-                    return NextResponse.json({
-                        error: "Upload Error: This spreadsheet contains duplicate Reference IDs for the same user. Please make sure every line has a unique ID number and try again."
-                    }, { status: 400 });
-                }
-                throw batchInsertError;
-            }
+        const incrementalTonnes = parseFloat(conversionsPayload.carbon_mt || (calculatedKg / 1000));
+        const taxableTonnesFactor = incrementalTonnes * (1 - (freeAllowancePercent / 100));
+        const incrementalTaxLiability = taxableTonnesFactor * taxRatePerTon;
 
-            await supabaseAdmin
-                .from('ecoroute_corporate_api_tokens')
-                .update({ current_monthly_usage: currentUsage, updated_at: new Date().toISOString() })
-                .eq('user_id', user.id);
-        }
+        const nextUpdatedTaxTotal = parseFloat(tokenRecord.total_accrued_tax_liability_zar || 0.00) + incrementalTaxLiability;
+        const nextUsageCountValue = currentUsage + 1;
+
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({
+                current_monthly_usage: nextUsageCountValue,
+                total_accrued_tax_liability_zar: nextUpdatedTaxTotal,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', tokenRecord.id);
 
         return NextResponse.json({
             success: true,
-            imported_records_count: rowsProcessedCount,
-            skipped_failed_rows_count: skipErrorRowsCount,
-            current_monthly_usage: currentUsage,
-            limit_capacity_cap: limitCap
+            dry_run: false,
+            data: {
+                log_id: dbLogEntry.id,
+                type: cleanType.toUpperCase(),
+                emission_date: resolvedEmissionDate,
+                ...conversionsPayload,
+                quota_consumption: `${nextUsageCountValue}/${limitCapacityCap}`,
+                accrued_tax_liability_total: nextUpdatedTaxTotal,
+                calculation_metadata: metadataLog
+            }
         }, { status: 200 });
 
     } catch (error) {
-        console.error('🚨 [CSV Batch Ingestion Engine Crash]:', error.message);
-
-        return NextResponse.json({ error: error.message || 'Internal batch parsing disruption.' }, { status: 500 });
+        console.error('🚨 [B2B Corporate API Tunnel Disruption]:', error.message);
+        return NextResponse.json({ error: error.message || 'Internal API core calculation fault.' }, { status: 500 });
     }
 }

@@ -28,7 +28,9 @@ export async function POST(req) {
         const formData = await req.formData();
         const file = formData.get('file');
 
-        if (!file) return NextResponse.json({ error: 'Missing attachment file parameter.' }, { status: 400 });
+        if (!file) {
+            return NextResponse.json({ error: 'Missing attachment file parameter.' }, { status: 400 });
+        }
 
         const rawText = await file.text();
         const parsedRows = parseCSVTextToJSON(rawText);
@@ -52,6 +54,7 @@ export async function POST(req) {
             }, { status: 429 });
         }
 
+        // Pull existing logs indices to perform fast duplicate screening in non-strict mode
         const { data: existingLogs } = await supabaseAdmin
             .from('ecoroute_emissions_logs')
             .select('batch_manifest_row_id')
@@ -59,6 +62,8 @@ export async function POST(req) {
             .not('batch_manifest_row_id', 'is', null);
 
         const existingRefIdsSet = new Set(existingLogs?.map(l => l.batch_manifest_row_id) || []);
+
+        // Track Reference_IDs INSIDE this current file to catch duplicates before they hit the database
         const localFileRefIdsSet = new Set();
 
         const dynamicLogsPayloads = [];
@@ -80,6 +85,7 @@ export async function POST(req) {
                     row, user, bearerToken, file, activeLineIndex, taxRatePerTon, freeAllowancePercent
                 });
 
+                // Catches matching reference values inside the same spreadsheet file instantly
                 if (localFileRefIdsSet.has(uniqueReferenceKey)) {
                     return NextResponse.json({
                         error: `Spreadsheet Error: You have used the Reference ID "${uniqueReferenceKey}" more than once in this file (checked near line ${activeLineIndex}). Please make sure every row has a completely different Reference ID number and try uploading again.`
@@ -112,6 +118,7 @@ export async function POST(req) {
                 .from('ecoroute_emissions_logs')
                 .upsert(dynamicLogsPayloads, { onConflict: 'user_id, batch_manifest_row_id' });
 
+            // Translates raw database panic strings into simple, universal English
             if (batchInsertError) {
                 if (batchInsertError.message?.includes('cannot affect row a second time')) {
                     return NextResponse.json({

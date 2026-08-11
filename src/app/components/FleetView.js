@@ -96,16 +96,7 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
                 <div className="flex items-center space-x-2 shrink-0">
                     <button type="button" onClick={handleBackupDownload}
                         className="border border-emerald-800 text-emerald-400 font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md transition-all bg-slate-950 hover:border-emerald-600/50 stims-hover-glow text-center inline-block cursor-pointer">💾 Backup Data</button>
-                    {/* {isPremium && (
-                        <a
-                            href={`/api/export/pdf?userId=${user?.id}&startDate=${monthBounds.start}&endDate=${monthBounds.end}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="border border-emerald-800 text-emerald-400 font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md transition-all bg-slate-950 hover:border-emerald-600/50 stims-hover-glow text-center inline-block cursor-pointer"
-                        >
-                            📄 Export Auditor PDF
-                        </a>
-                    )} */}
+
                     <button type="button" onClick={handleAddNewVehicleClick} className={`border border-transparent text-white font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md transition-all stims-hover-glow cursor-pointer ${freeTierLimitReached ? 'bg-slate-800 text-slate-500 border-slate-700' : 'bg-blue-600'}`}>{freeTierLimitReached ? '🔒 Limit Reached' : '[+] Add New Vehicle'}</button>
                 </div>
             </div>
