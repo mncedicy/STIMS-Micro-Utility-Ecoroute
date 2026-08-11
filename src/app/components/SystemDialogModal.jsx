@@ -5,67 +5,71 @@ import React from 'react';
 
 export default function SystemDialogModal({
     isOpen,
-    status = 'blue', // 'green' | 'red' | 'blue'
+    status = 'blue', // 'blue', 'green', or 'red'
     title,
     message,
-    confirmText = 'CONFIRM',
-    cancelText = 'CANCEL',
+    confirmText = 'ACKNOWLEDGE',
     onConfirm,
     onCancel
 }) {
     if (!isOpen) return null;
 
-    const statusColors = {
-        green: 'bg-green-500',
-        red: 'bg-red-500',
-        blue: 'bg-blue-500'
+    // Resolve structural status outline accents dynamically
+    const accentColorsMatrix = {
+        blue: { border: 'border-blue-900', text: 'text-blue-400', bg: 'bg-blue-950/20' },
+        green: { border: 'border-emerald-900', text: 'text-emerald-400', bg: 'bg-emerald-950/20' },
+        red: { border: 'border-rose-900', text: 'text-rose-400', bg: 'bg-rose-950/20' }
     };
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-20 bg-slate-950/80 backdrop-blur-md animate-fade-in font-mono text-xs">
-            <div className="w-full max-w-sm p-5 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl space-y-4 mx-auto">
+    const currentAccent = accentColorsMatrix[status] || accentColorsMatrix.blue;
 
-                {/* Modal Header */}
-                <div className="flex items-center space-x-2 border-b border-slate-800 pb-2.5">
-                    <div className={`h-1.5 w-1.5 rounded-full animate-pulse ${statusColors[status] || statusColors.blue}`} />
-                    <h4 className="text-[11px] font-bold text-slate-200 uppercase tracking-widest">
-                        {title}
+    return (
+        /* FIXED TOP LAYER LAYOUT: z-[9999] absolute fixed inset guarantees popup floats on top of all screens */
+        <div className="fixed inset-0 w-full h-full flex items-center justify-center p-4 z-[9999] select-none font-mono text-xs">
+            {/* Dark glass backdrop layout mask */}
+            <div
+                className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300"
+                onClick={onCancel || (() => { })}
+            />
+
+            {/* Centered Modal Dialogue Content Card Box */}
+            <div className={`w-full max-w-sm bg-[#090d22] border ${currentAccent.border} rounded-xl p-6 shadow-2xl relative z-10 animate-fade-in space-y-5 text-left stims-hover-glow`}>
+
+                {/* Upper Heading Header Row */}
+                <div className="border-b border-slate-900 pb-2.5">
+                    <span className={`${currentAccent.text} font-black tracking-wider text-[10px] uppercase block mb-0.5`}>
+                        ⚙️ SYSTEM DIALOG CONSOLE // {status.toUpperCase()}
+                    </span>
+                    <h4 className="text-sm font-black text-white uppercase tracking-wide leading-tight">
+                        {title || 'OPERATION ALERT'}
                     </h4>
                 </div>
 
-                {/* Modal Content */}
-                <div className="text-xs space-y-2 text-slate-400 leading-relaxed">
-                    <p className="font-bold text-slate-200">{message}</p>
-                </div>
+                {/* Plain English Core Message Body Block */}
+                <p className="text-slate-400 text-[11px] leading-relaxed font-sans normal-case">
+                    {message}
+                </p>
 
-                {/* Action Interface Footer Grid */}
-                <div className="flex space-x-2 pt-2 text-[10px]">
-                    {onCancel ? (
-                        <>
-                            <button
-                                type="button"
-                                onClick={onCancel}
-                                className="flex-1 bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 py-2 rounded transition-colors uppercase tracking-wider font-bold"
-                            >
-                                {cancelText}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onConfirm}
-                                className="flex-1 bg-red-950/40 border border-red-700 text-red-400 hover:bg-red-700 hover:text-white font-bold py-2 rounded transition-all uppercase tracking-wider"
-                            >
-                                {confirmText}
-                            </button>
-                        </>
-                    ) : (
+                {/* Dynamic Responsive Submittal Controls Row */}
+                <div className="flex items-center justify-end space-x-2.5 pt-2 border-t border-slate-900/60">
+                    {/* Render optional cancel handle button triggers cleanly */}
+                    {onCancel && (
                         <button
                             type="button"
-                            onClick={onConfirm}
-                            className="w-full bg-slate-950 border border-slate-800 text-blue-400 hover:text-blue-300 py-2 rounded transition-colors uppercase tracking-wider font-bold text-center"
+                            onClick={onCancel}
+                            className="px-3.5 py-2 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-500 hover:text-slate-300 font-bold uppercase tracking-wider text-[10px] rounded-lg transition-colors cursor-pointer"
                         >
-                            ACKNOWLEDGE
+                            Cancel
                         </button>
                     )}
+
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        className={`px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider text-[10px] rounded-lg transition-all shadow-sm shadow-blue-600/10 cursor-pointer`}
+                    >
+                        {confirmText}
+                    </button>
                 </div>
 
             </div>

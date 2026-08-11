@@ -2,15 +2,16 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 
 export default function Footer({ onNavigateViewPage }) {
     const currentYear = new Date().getFullYear();
 
     const handleNavigationLinkClick = (e, targetPageId) => {
-        e.preventDefault();
+        // Only override standard routing parameters if managing state pagination loops
         if (typeof onNavigateViewPage === 'function') {
+            e.preventDefault();
             onNavigateViewPage(targetPageId);
-            // Smoothly scroll back to the top of the interface layout context canvas
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     };
@@ -42,12 +43,11 @@ export default function Footer({ onNavigateViewPage }) {
                                 >
                                     ➔ Emissions Calculator Workspace
                                 </a>
-                                {/* FIXED: Changed </td> to </li> to clear the JSX syntax compiler block */}
                             </li>
                             <li>
                                 <a
                                     href="#fleet_ledger"
-                                    onClick={(e) => handleNavigationLinkClick(e, 'fleet_ledger')}
+                                    onClick={(e) => handleNavigationLinkClick(e, 'fleet')}
                                     className="text-slate-500 hover:text-blue-400 transition-colors cursor-pointer uppercase tracking-wider block"
                                 >
                                     ➔ Logistics Archive Ledger
@@ -61,6 +61,24 @@ export default function Footer({ onNavigateViewPage }) {
                                 >
                                     ➔ Programmatic B2B API Portal
                                 </a>
+                            </li>
+                            {/* Paystack compliance cancellation terms document link handle node */}
+                            <li>
+                                <Link
+                                    href="/legal"
+                                    className="text-slate-400 hover:text-blue-400 transition-colors uppercase tracking-wider block"
+                                >
+                                    ➔ Refund & Cancellation Policy
+                                </Link>
+                            </li>
+                            {/* FIXED: Added explicit Link component route mapping to target your Privacy Policy page */}
+                            <li>
+                                <Link
+                                    href="/privacy"
+                                    className="text-slate-400 hover:text-emerald-400 font-bold transition-colors uppercase tracking-wider block"
+                                >
+                                    ➔ Privacy & Data Security Policy
+                                </Link>
                             </li>
                         </ul>
                     </div>
