@@ -35,10 +35,12 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Unauthorized user access' }, { status: 401 });
         }
 
-        // 1. Fetch token record and user corporate details concurrently
-        const [prof, tokenQuery] = await Promise.all([
-            supabaseAdmin.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-            supabaseAdmin.from('ecoroute_corporate_api_tokens').select('*').eq('user_id', user.id).maybeSingle()
+        // Fetch token records, applications parameters, and subscription data concurrently
+        const [appMetaRes, subRes, tokenQuery, profRes] = await Promise.all([
+            supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle(),
+            supabaseAdmin.from('user_subscriptions').select('tier, status').eq('user_id', user.id).eq('app_id', 'ecoroute').maybeSingle(),
+            supabaseAdmin.from('ecoroute_corporate_api_tokens').select('*').eq('user_id', user.id).maybeSingle(),
+            supabaseAdmin.from('profiles').select('*').eq('id', user.id).maybeSingle()
         ]);
 
         const currentUsageCount = tokenQuery.data?.current_monthly_usage || 0;
@@ -46,7 +48,7 @@ export async function POST(req) {
 
         if (currentUsageCount >= capacityLimitBounds) {
             return NextResponse.json({
-                error: `Quota Blocked: Monthly request volume exhausted. Current limit: ${currentUsageCount}/${capacityLimitBounds} requests. Upgrade account tier to extend limits.`
+                error: `Quota Blocked: Monthly request volume exhausted. Current limit: ${currentUsageCount}/${capacityLimitBounds} requests.`
             }, { status: 429 });
         }
 
@@ -61,7 +63,12 @@ export async function POST(req) {
 
         const resolvedEmissionDate = body.emission_date && /^\d{4}-\d{2}-\d{2}$/.test(body.emission_date)
             ? body.emission_date
-            : new Date().toISOString().split('T')[0];
+            : new Date().toISOString().split('T');
+
+        // FIXED BRANCH RESOLUTION: Sanitize incoming custom cost center name input tags cleanly
+        const sanitizedCostCenter = body.cost_center && body.cost_center.toString().trim() !== ''
+            ? body.cost_center.toString().trim().substring(0, 100)
+            : 'Unassigned';
 
         // 2. Persist emissions calculation log
         const { data: dbLogEntry, error: dbWriteError } = await supabaseAdmin
@@ -90,12 +97,14 @@ export async function POST(req) {
                 gas_type: body.gas_type || 'NATURAL_GAS',
                 gas_unit: body.gas_unit || 'm3',
                 emission_date: resolvedEmissionDate,
+                cost_center: sanitizedCostCenter, // FIXED: Dynamic multi-branch parameter mapped natively
 
                 raw_payload: {
                     ...conversionsPayload,
                     metadata: {
                         ...metadataLog,
-                        userAssignedDate: resolvedEmissionDate
+                        userAssignedDate: resolvedEmissionDate,
+                        costCenterAssigned: sanitizedCostCenter
                     },
                     global_flight_route: cleanType === 'flight' ? {
                         origin_name_full: body.origin_iata,
@@ -110,21 +119,28 @@ export async function POST(req) {
             return NextResponse.json({ error: `Database policy restriction: ${dbWriteError.message}` }, { status: 500 });
         }
 
-        // 3. Atomically update usage tracks across all plan configurations
+        // FINANCIAL TAX LIABILITY ENGINE: Calculates real-time tax cost exposures natively
+        const taxRatePerTon = parseFloat(appMetaRes.data?.carbon_tax_rate_zar_per_tonne || 190.00);
+        const freeAllowancePercent = parseFloat(appMetaRes.data?.carbon_tax_free_allowance_percentage || 60.00);
+
+        const incrementalTonnes = parseFloat(conversionsPayload.carbon_mt || (calculatedKg / 1000));
+        const taxableTonnesFactor = incrementalTonnes * (1 - (freeAllowancePercent / 100));
+        const incrementalTaxLiabilityZar = taxableTonnesFactor * taxRatePerTon;
+
+        const baselineAccruedTaxZar = parseFloat(tokenQuery.data?.total_accrued_tax_liability_zar || 0.00);
+        const nextUpdatedTaxLiabilityTotalZar = baselineAccruedTaxZar + incrementalTaxLiabilityZar;
+
         const nextUsageCountValue = currentUsageCount + 1;
-        const currentPeriodKey = tokenQuery.data?.last_reset_period || new Date().toISOString().split('T')[0];
+        const currentPeriodKey = tokenQuery.data?.last_reset_period || new Date().toISOString().split('T');
 
-        // Resolve real-time name matching rules
-        const resolvedEnterpriseName = prof.data?.company?.trim()
-            ? prof.data.company.trim()
-            : `${prof.data?.first_name || 'Independent'} ${prof.data?.surname || 'Enterprise'}`.trim();
+        const resolvedEnterpriseName = profRes.data?.company?.trim()
+            ? profRes.data.company.trim()
+            : `${profRes.data?.first_name || 'Independent'} ${profRes.data?.surname || 'Enterprise'}`.trim();
 
-        // FIXED CRYPTOGRAPHIC GENERATOR: Instantiated securely ahead of transactional updates
         const secureHexKey = 'ecoroute_live_' + Array.from(crypto.getRandomValues(new Uint8Array(16)))
             .map(b => b.toString(16).padStart(2, '0')).join('');
 
-        // FIXED UPSERT ROUTINE LAYER: Safely integrates your signature variables loop layout
-        await supabaseAdmin
+        const { data: updatedTokenRecord } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .upsert({
                 id: tokenQuery.data?.id || undefined,
@@ -132,11 +148,14 @@ export async function POST(req) {
                 organization_name: resolvedEnterpriseName,
                 api_token: tokenQuery.data?.api_token || secureHexKey,
                 current_monthly_usage: nextUsageCountValue,
-                usage_limit_cap: capacityLimitBounds,
+                usage_limit_cap: tokenQuery.data?.usage_limit_cap || (subRes.data?.tier === 'premium' ? 3000 : 100),
+                total_accrued_tax_liability_zar: nextUpdatedTaxLiabilityTotalZar,
                 last_reset_period: currentPeriodKey,
                 is_active: true,
                 updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id' });
+            }, { onConflict: 'user_id' })
+            .select()
+            .single();
 
         try {
             revalidatePath('/');
@@ -147,12 +166,7 @@ export async function POST(req) {
 
         const responseData = {
             ...dbLogEntry,
-            tokenRecord: {
-                ...tokenQuery.data,
-                current_monthly_usage: nextUsageCountValue,
-                last_reset_period: currentPeriodKey,
-                organization_name: resolvedEnterpriseName
-            }
+            tokenRecord: updatedTokenRecord
         };
 
         return NextResponse.json({ success: true, data: responseData }, { status: 200 });

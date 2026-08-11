@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import FleetList from './FleetList';
 import CarbonChart from './CarbonChart';
 import LogHistoryManager from './LogHistoryManager';
+import CsvUploader from './CsvUploader';
 
 export default function FleetView({ user, customVehicles = [], rawLogsArray = [], loadData, setIsFleetModalOpen, subscription }) {
     const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
@@ -108,7 +109,8 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
                     <button type="button" onClick={handleAddNewVehicleClick} className={`border border-transparent text-white font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md transition-all stims-hover-glow cursor-pointer ${freeTierLimitReached ? 'bg-slate-800 text-slate-500 border-slate-700' : 'bg-blue-600'}`}>{freeTierLimitReached ? '🔒 Limit Reached' : '[+] Add New Vehicle'}</button>
                 </div>
             </div>
-
+            {/* FIXED PLACEMENT: Injected the batch import uploader panel cleanly on top of fleet list registries */}
+            <CsvUploader onUploadSuccess={() => loadData(true)} />
             <FleetList customVehicles={customVehicles} onVehicleDeleted={loadData} isPremium={isPremium} />
             <LogHistoryManager user={user} customVehicles={customVehicles} rawLogsArray={rawLogsArray} />
             <CarbonChart rawLogsArray={rawLogsArray} />

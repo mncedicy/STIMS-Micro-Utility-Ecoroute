@@ -15,24 +15,68 @@ export default function CorporateApiPanel({ user, isPremium }) {
     const [modal, setModal] = useState({ isOpen: false, status: 'blue', title: '', message: '', hasCancel: false });
 
     useEffect(() => {
-        async function fetchActiveUserDeveloperToken() {
+        async function fetchOrCreateUserDeveloperToken() {
             if (!user?.id) return;
             try {
+                // 1. Check if a programmatic access token row already exists for this operator
                 const { data, error } = await supabase
                     .from('ecoroute_corporate_api_tokens')
                     .select('*')
                     .eq('user_id', user.id)
                     .maybeSingle();
 
-                if (!error && data) setTokenData(data);
+                if (!error && data) {
+                    setTokenData(data);
+                    setLoading(false);
+                    return;
+                }
+
+                // 2. FIXED AUTOMATIC INITIALIZATION: If no record is detected, automatically create one instantly
+                // Fetch the corresponding first name / company metadata from profiles to populate organization fields safely
+                const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('first_name, surname, company')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                const resolvedEnterpriseName = profileData?.company?.trim()
+                    ? profileData.company.trim()
+                    : `${profileData?.first_name || 'Independent'} ${profileData?.surname || 'Enterprise'}`.trim();
+
+                // Generate a highly secure unique cryptographically secure hex key matching your baseline pattern specifications
+                const secureHexKey = 'ecoroute_live_' + Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                    .map(b => b.toString(16).padStart(2, '0')).join('');
+
+                const fallbackLimitCap = isPremium ? 3000 : 100;
+                const currentPeriodKey = new Date().toISOString().split('T')[0];
+
+                const { data: newRecord, error: insertError } = await supabase
+                    .from('ecoroute_corporate_api_tokens')
+                    .upsert({
+                        user_id: user.id,
+                        organization_name: resolvedEnterpriseName,
+                        api_token: secureHexKey,
+                        current_monthly_usage: 0,
+                        usage_limit_cap: fallbackLimitCap,
+                        total_accrued_tax_liability_zar: 0.00,
+                        last_reset_period: currentPeriodKey,
+                        is_active: true,
+                        updated_at: new Date().toISOString()
+                    }, { onConflict: 'user_id' })
+                    .select()
+                    .single();
+
+                if (insertError) throw insertError;
+                if (newRecord) setTokenData(newRecord);
+
             } catch (err) {
-                console.error('[Corporate Api Panel Hydration Crash]:', err);
+                console.error('[Corporate Api Panel Hydration or Auto-Provisioning Crash]:', err);
             } finally {
                 setLoading(false);
             }
         }
-        fetchActiveUserDeveloperToken();
-    }, [user]);
+        fetchOrCreateUserDeveloperToken();
+    }, [user, isPremium]);
 
     async function executeTokenResetRoutine() {
         setModal(prev => ({ ...prev, isOpen: false }));
@@ -90,7 +134,7 @@ export default function CorporateApiPanel({ user, isPremium }) {
                 <div className="space-y-4">
                     <ApiUsageBar tokenRecord={tokenData} />
 
-                    {/* RENDER NEW EXTRACTED ELEMENT MODULE */}
+                    {/* Secret API token visibility rendering field wrapper component */}
                     <ApiTokenField
                         tokenData={tokenData}
                         resetting={resetting}
@@ -106,8 +150,8 @@ export default function CorporateApiPanel({ user, isPremium }) {
                     <ApiSnippetCard userId={user?.id} />
                 </div>
             ) : (
-                <div className="text-center py-10 text-slate-600 border border-dashed border-slate-800 rounded-xl bg-slate-950/10 uppercase tracking-wider text-[10px]">
-                    ⚠️ NO ACTIVE API RECORD DETECTED. RE-ROUTE TO THE DASHBOARD PANEL VIEW TO INITIALIZE COMPLIANCE LOGS ACCESS CHANNELS.
+                <div className="text-center py-10 text-slate-600 border border-dashed border-slate-800 rounded-xl bg-slate-950/10 uppercase tracking-wider text-[10px] select-none">
+                    ⚠️ CRITICAL ENCRYPTION CONFIGURATION MISSING. PLEASE RE-REFRESH THE WEB CANVASES WINDOW INSTANTLY.
                 </div>
             )}
 

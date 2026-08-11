@@ -7,9 +7,11 @@ import AuthScreen from './components/AuthScreen';
 import FleetManager from './components/FleetManager';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import DashboardView from './components/DashboardView';
-import FleetView from './components/FleetView';
-import CorporateApiPanel from './components/CorporateApiPanel';
+import LandingHero from './components/LandingHero';
+import Contact from './components/Contact';
+import DashboardViewContainer from './components/DashboardViewContainer';
+import ApiViewContainer from './components/ApiViewContainer';
+import FleetViewContainer from './components/FleetViewContainer';
 import { supabase } from './lib/supabaseClient';
 
 export default function Home() {
@@ -26,9 +28,21 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [calcLoading, setCalcLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
   const [activeViewPage, setActiveViewPage] = useState('dashboard');
   const [rawLogsArray, setRawLogsArray] = useState([]);
+  const [showAuthGateModal, setShowAuthGateModal] = useState(false);
+
+  const [activeApplicationMeta, setActiveApplicationMeta] = useState({
+    title: "EcoRoute",
+    tagline: "FLEET CARBON ANALYTICS",
+    category: "LOGISTICS",
+    description: "Automated mileage-to-emissions translation engine built specifically for independent local courier services seeking green compliance tax credits.",
+    app_link: "https://stims.co.za",
+    monetization_type: "Subscription",
+    monetization_fee_display: "R280 per month",
+    usage_limit_free: 100,
+    usage_limit_premium: 3000
+  });
 
   const syncState = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -44,10 +58,20 @@ export default function Home() {
     return () => { authSub?.unsubscribe(); window.removeEventListener('focus', syncState); };
   }, []);
 
-  // FIXED ACTION ROUTINE: Added an optional boolean parameter to check if this is an on-the-fly state refresh pass
   const loadData = async (isRefreshOnly = false) => {
-    if (!user) return;
     try {
+      const { data: appMetaRow } = await supabase
+        .from('applications')
+        .select('*')
+        .eq('app_id', 'ecoroute')
+        .maybeSingle();
+
+      if (appMetaRow) {
+        setActiveApplicationMeta(appMetaRow);
+      }
+
+      if (!user) return;
+
       const [prof, sub, cars, logs, tokenRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
         supabase.from('user_subscriptions').select('tier, status, current_period_start').eq('user_id', user.id).eq('app_id', 'ecoroute').maybeSingle(),
@@ -59,47 +83,12 @@ export default function Home() {
       setProfile(prof.data);
       setSub(sub.data ? { tier: sub.data.tier, status: sub.data.status } : { tier: 'free', status: 'inactive' });
       setCustomVehicles(cars.data || []);
+      setRawLogsArray(logs.data || []);
 
-      const allLogs = logs.data || [];
-      setRawLogsArray(allLogs);
-
-      // FIXED SEPARATION: Only apply the initialization placeholder layout state if this is the first page load
-      if (!isRefreshOnly) {
-        if (tokenRes.data) {
-          setEstimate({
-            category_display: 'INITIALIZATION',
-            tokenRecord: tokenRes.data
-          });
-        }
-      } else {
-        // If it is a refresh after a calculation, update the active token metrics inside your current report panel
-        if (tokenRes.data && estimate && estimate.category_display !== 'INITIALIZATION') {
-          setEstimate(prev => ({
-            ...prev,
-            tokenRecord: tokenRes.data
-          }));
-        }
-      }
-
-      // Chronological current-month date trimming layout grouping boundaries
-      const today = new Date();
-      const currentYear = today.getFullYear();
-      const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
-      const lastDayInMonth = new Date(currentYear, today.getMonth() + 1, 0).getDate();
-
-      const startBoundsStr = `${currentYear}-${currentMonth}-01`;
-      const endBoundsStr = `${currentYear}-${currentMonth}-${String(lastDayInMonth).padStart(2, '0')}`;
-
-      if (logs.data) {
-        const currentMonthLogs = allLogs.filter(l => {
-          const d = l.emission_date;
-          return d && d >= startBoundsStr && d <= endBoundsStr;
-        });
-
-        setHistory(currentMonthLogs.map(l => ({
-          carbon_kg: l.carbon_kg,
-          estimated_at: l.emission_date
-        })));
+      if (!isRefreshOnly && tokenRes.data) {
+        setEstimate({ category_display: 'INITIALIZATION', tokenRecord: tokenRes.data });
+      } else if (isRefreshOnly && tokenRes.data && estimate && estimate.category_display !== 'INITIALIZATION') {
+        setEstimate(prev => ({ ...prev, tokenRecord: tokenRes.data }));
       }
     } catch (err) {
       console.error('EcoRoute core data load exception:', err);
@@ -108,52 +97,56 @@ export default function Home() {
     }
   };
 
-  // First page mount triggers normal initial loading
-  useEffect(() => { if (user) loadData(false); }, [user]);
+  useEffect(() => { loadData(false); }, [user]);
 
   async function handleCalculate(formPayload) {
     setCalcLoading(true);
     setErrorMsg('');
-
     try {
       const { data: currentSessionData } = await supabase.auth.getSession();
-      let accessToken = currentSessionData?.session?.access_token || '';
-
-      if (!accessToken) {
-        const localSsoSessionString = window.localStorage.getItem('stims-enterprise-sso');
-        if (localSsoSessionString) {
-          const parsedSsoData = JSON.parse(localSsoSessionString);
-          accessToken = parsedSsoData?.access_token || parsedSsoData?.currentSession?.access_token || '';
-        }
-      }
+      const accessToken = currentSessionData?.session?.access_token || '';
 
       const res = await fetch('/api/estimates', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': accessToken ? `Bearer ${accessToken}` : ''
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': accessToken ? `Bearer ${accessToken}` : '' },
         body: JSON.stringify(formPayload)
       });
 
       const result = await res.json();
-      if (!res.ok || result.error) throw new Error(result.error || 'Offline calculation execution rejected.');
+      if (!res.ok || result.error) throw new Error(result.error || 'Offline calculation rejected.');
 
-      // Update state directly from clean response return
       setEstimate(result.data);
-
-      // FIXED: Pass true to let loadData know this is a refresh only, keeping your numbers visible
       await loadData(true);
     } catch (err) {
-      console.error('EcoRoute Pipeline calculation error tracking:', err.message);
-      setErrorMsg(err.message || 'Processing logistical parameters failed.');
+      setErrorMsg(err.message || 'Processing parameter metrics failed.');
     } finally {
       setCalcLoading(false);
     }
   }
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-xs font-mono text-slate-600 select-none">AUTHENTICATING SUBDOMAIN MATRIX...</div>;
-  if (!user) return <main className="min-h-screen w-full flex items-center justify-center p-4 bg-slate-950 text-slate-100 selection:bg-blue-500 selection:text-slate-950 antialiased relative"><div className="stims-ambient-glow" /><Ticker /><AuthScreen onAuthSuccess={loadData} /></main>;
+
+  // Render Experience for unauthenticated visitors
+  if (!user) {
+    return (
+      <div className="min-h-screen w-full bg-[#020617] text-slate-100 antialiased relative flex flex-col justify-between selection:bg-blue-500 selection:text-slate-950">
+        {!showAuthGateModal ? (
+          <>
+            <LandingHero onGetStartedClick={() => setShowAuthGateModal(true)} appData={activeApplicationMeta} />
+            <Contact user={null} profile={null} />
+          </>
+        ) : (
+          <main className="w-full flex-grow flex items-center justify-center p-4 relative z-10 pt-16 animate-fade-in">
+            <div className="w-full max-w-md relative space-y-4">
+              <AuthScreen onAuthSuccess={loadData} />
+              <button type="button" onClick={() => setShowAuthGateModal(false)} className="w-full text-center text-slate-500 hover:text-slate-300 font-mono text-[10px] uppercase tracking-widest bg-transparent border-none outline-none py-1 cursor-pointer transition-colors">◀ return to landing overview</button>
+            </div>
+          </main>
+        )}
+        <Footer onNavigateViewPage={setActiveViewPage} />
+      </div>
+    );
+  }
 
   const isPremium = subscription.tier === 'premium' && subscription.status === 'active';
   const quotaReached = !isPremium && customVehicles.length >= 1;
@@ -161,62 +154,41 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-blue-500 selection:text-slate-950 antialiased relative">
       <div className="stims-ambient-glow" />
-
       <Navbar user={user} activeViewPage={activeViewPage} onNavigateViewPage={setActiveViewPage} />
 
-      <main className="w-full flex flex-col items-center justify-start pt-28 pb-24 px-4 relative z-10 animate-fade-in-up flex-grow">
+      <main className="w-full flex flex-col items-center justify-start pt-28 pb-24 px-4 relative z-10 flex-grow animate-fade-in-up">
         <div className="w-full max-w-4xl relative space-y-6">
           <Ticker />
 
-          {activeViewPage === 'dashboard' ? (
-            <DashboardView
-              user={user}
-              profile={profile}
-              isPremium={isPremium}
-              quotaReached={quotaReached}
-              customVehicles={customVehicles}
-              selectedCustomVehicle={selectedCustomVehicle}
-              setSelectedCustomVehicle={setSelectedCustomVehicle}
-              distance={distance}
-              setDistance={setDistance}
-              unit={unit}
-              setUnit={setUnit}
-              estimate={estimate}
-              calcLoading={calcLoading}
-              errorMsg={errorMsg}
-              handleCalculate={handleCalculate}
-              subscription={subscription}
-              loadData={loadData}
-              setIsFleetModalOpen={setIsFleetModalOpen}
+          {activeViewPage === 'dashboard' && (
+            <DashboardViewContainer
+              user={user} profile={profile} isPremium={isPremium} quotaReached={quotaReached}
+              customVehicles={customVehicles} selectedCustomVehicle={selectedCustomVehicle} setSelectedCustomVehicle={setSelectedCustomVehicle}
+              distance={distance} setDistance={setDistance} unit={unit} setUnit={setUnit}
+              estimate={estimate} calcLoading={calcLoading} errorMsg={errorMsg} handleCalculate={handleCalculate}
+              subscription={subscription} loadData={loadData} setIsFleetModalOpen={setIsFleetModalOpen}
             />
-          ) : activeViewPage === 'developer_api' ? (
-            <CorporateApiPanel
-              user={user}
-              isPremium={isPremium}
-            />
-          ) : (
-            <div className="space-y-6">
-              {errorMsg && (
-                <div className="p-3 text-xs bg-rose-950/20 border border-rose-900/40 text-rose-400 font-mono rounded-lg shadow-sm">
-                  ⚠️ SYSTEM LOG alert: {errorMsg}
-                </div>
-              )}
-              <FleetView
-                user={user}
-                customVehicles={customVehicles}
-                rawLogsArray={rawLogsArray}
-                loadData={loadData}
-                setIsFleetModalOpen={setIsFleetModalOpen}
-                subscription={subscription}
-              />
-            </div>
           )}
+
+          {activeViewPage === 'developer_api' && (
+            <ApiViewContainer user={user} isPremium={isPremium} />
+          )}
+
+          {/* FIXED: Condition string adjusted from 'fleet_ledger' to 'fleet' to match your Navbar's router events exactly */}
+          {activeViewPage === 'fleet' && (
+            <FleetViewContainer
+              user={user} customVehicles={customVehicles} rawLogsArray={rawLogsArray}
+              loadData={loadData} setIsFleetModalOpen={setIsFleetModalOpen} subscription={subscription} errorMsg={errorMsg}
+            />
+          )}
+
+          {/* Persistent Ticket Pipeline Service */}
+          <Contact user={user} profile={profile} />
         </div>
 
         <FleetManager user={user} isOpen={isFleetModalOpen} onClose={() => setIsFleetModalOpen(false)} onVehicleAdded={loadData} />
       </main>
-
-      <Footer />
+      <Footer onNavigateViewPage={setActiveViewPage} />
     </div>
   );
 }

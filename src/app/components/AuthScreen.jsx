@@ -1,157 +1,193 @@
+// /src/app/components/AuthScreen.jsx
 'use client';
-import { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import AuthTabs from './auth/AuthTabs';
+import SignupFields from './auth/SignupFields';
 
 export default function AuthScreen({ onAuthSuccess }) {
-    // UI view state tracks: 'login', 'signup', or 'recovery'
-    const [viewState, setViewState] = useState('login');
-
+    const [mode, setMode] = useState('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [name, setName] = useState('');
+    const [firstName, setFirstName] = useState('');
     const [surname, setSurname] = useState('');
     const [company, setCompany] = useState('');
 
-    const [msg, setMsg] = useState({ type: '', text: '' });
-    const [loading, setLoading] = useState(false);
+    const [countryList, setCountryList] = useState([]);
+    const [selectedCountry, setSelectedCountry] = useState(null);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-    const handleAuth = async (e) => {
+    const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState({ success: null, text: "" });
+
+    // Fetch dynamic country listings from your static database table indexes
+    useEffect(() => {
+        async function loadStaticCountriesRegistry() {
+            try {
+                const { data, error } = await supabase
+                    .from('ecoroute_static_countries')
+                    .select('id, code, name, continent')
+                    .order('name', { ascending: true });
+                if (!error && data) setCountryList(data);
+            } catch (err) {
+                console.error('[Static Countries Hydration Fault]:', err);
+            }
+        }
+        loadStaticCountriesRegistry();
+    }, []);
+
+    const handleForgotPasswordResetClick = async (e) => {
         e.preventDefault();
+        if (!email.trim()) {
+            setMessage({ success: false, text: "Please type your email address into the input field above first, then click Forgot Password again." });
+            return;
+        }
+
         setLoading(true);
-        setMsg({ type: '', text: '' });
+        setMessage({ success: null, text: "" });
 
         try {
-            if (viewState === 'signup') {
-                // 1. Account Creation Pipeline
-                const { error } = await supabase.auth.signUp({
-                    email,
-                    password,
+            const redirectUrl = `${window.location.origin}/update-password`;
+            const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+                redirectTo: redirectUrl,
+            });
+
+            if (error) throw error;
+            setMessage({ success: true, text: "Success! We sent a password reset link to your email. Please check your inbox and click the link to reset your password." });
+        } catch (error) {
+            setMessage({ success: false, text: error.message || "Failed to trigger recovery email link." });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAuthActionSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setMessage({ success: null, text: "" });
+
+        try {
+            if (mode === 'login') {
+                const { error: loginError } = await supabase.auth.signInWithPassword({
+                    email: email.trim(), password: password.trim()
+                });
+                if (loginError) throw loginError;
+
+                setMessage({ success: true, text: "Access Authorization Cleared. Initializing Dashboard..." });
+                if (typeof onAuthSuccess === 'function') onAuthSuccess();
+            } else {
+                if (!firstName.trim()) throw new Error("First name configuration is mandatory.");
+                if (!selectedCountry) throw new Error("Please select your country of operations.");
+
+                const resolvedCleanCode = selectedCountry.code.toString().trim().toUpperCase();
+
+                // FIXED AUTH REGISTRATION MAP: Keys match your handle_new_user_signup function variables exactly
+                const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                    email: email.trim(),
+                    password: password.trim(),
                     options: {
-                        // FIXED: Adjusted user metadata object maps to match your database triggers exactly
                         data: {
-                            first_name: name.trim(),
-                            surname: surname.trim(),
-                            company: company.trim()
+                            first_name: firstName.trim(),
+                            surname: surname.trim() || '',
+                            company: company.trim() || '',
+                            country_code: resolvedCleanCode
                         }
                     }
                 });
-                if (error) throw error;
-                setMsg({ type: 'success', text: 'Account registered successfully! You can now log in.' });
-                setViewState('login');
-            } else if (viewState === 'login') {
-                // 2. Core Authentication Sign-In Pipeline
-                const { error } = await supabase.auth.signInWithPassword({ email, password });
-                if (error) throw error;
-                onAuthSuccess();
-            } else if (viewState === 'recovery') {
-                // 3. Forgot Password Recovery Overlay Pipeline
-                const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                    redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/update-password`,
-                });
-                if (error) throw error;
-                setMsg({
-                    type: 'success',
-                    text: `Recovery instructions processed for "${email}". If the profile exists, an endpoint token route link has been queued.`
-                });
-                setViewState('login');
+
+                if (signUpError) throw signUpError;
+                if (!signUpData?.user) throw new Error("Registration identity instantiation timed out.");
+
+                // Manual profile insert ensures fields populate immediately on the client-side profile cache mount
+                const { error: profileInsertError } = await supabase
+                    .from('profiles')
+                    .insert([
+                        {
+                            id: signUpData.user.id,
+                            first_name: firstName.trim(),
+                            surname: surname.trim() || null,
+                            company: company.trim() || null,
+                            country_code: resolvedCleanCode,
+                            updated_at: new Date().toISOString()
+                        }
+                    ]);
+
+                if (profileInsertError && !profileInsertError.message?.includes('duplicate key')) {
+                    throw profileInsertError;
+                }
+
+                setMessage({ success: true, text: "Registration Successful! Profile initialized seamlessly." });
+                if (typeof onAuthSuccess === 'function') onAuthSuccess();
             }
-        } catch (err) {
-            setMsg({ type: 'error', text: err.message || 'Authentication framework connection fault.' });
+        } catch (error) {
+            setMessage({ success: false, text: error.message || "Authentication verification transaction dropped." });
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        /* FIXED: Applied your clean top center layout bounds with functional backdrop blur rules */
-        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5 animate-fade-in mx-auto relative overflow-hidden font-mono">
+        <div className="w-full bg-slate-900/40 border border-slate-900 rounded-xl p-6 backdrop-blur-sm shadow-xl font-mono text-xs text-left relative z-10 stims-hover-glow">
+            <AuthTabs mode={mode} setMode={setMode} clearMessage={() => setMessage({ success: null, text: "" })} />
 
-            {/* Decorative Branding Highlights */}
-            <div className="absolute -right-12 -top-12 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
+            <form onSubmit={handleAuthActionSubmit} className="space-y-4">
+                {mode === 'signup' && (
+                    <SignupFields
+                        loading={loading} firstName={firstName} setFirstName={setFirstName}
+                        surname={surname} setSurname={setSurname} company={company} setCompany={setCompany}
+                        countryList={countryList} selectedCountry={selectedCountry} setSelectedCountry={setSelectedCountry}
+                        isDropdownOpen={isDropdownOpen} setIsDropdownOpen={setIsDropdownOpen}
+                    />
+                )}
 
-            <div className="text-center border-b border-slate-800 pb-4">
-                <h1 className="text-xl font-black text-white uppercase tracking-wide">
-                    {viewState === 'signup' && 'Create Corporate Account'}
-                    {viewState === 'login' && 'EcoRoute Sign In'}
-                    {viewState === 'recovery' && 'Password Recovery'}
-                </h1>
-                <p className="text-xs text-slate-500 mt-1">
-                    {viewState === 'signup' && 'Configure custom fleets and tracking bounds'}
-                    {viewState === 'login' && 'Manage compliance logs and custom fleet cars'}
-                    {viewState === 'recovery' && 'Enter your verified address to receive an entry token'}
-                </p>
-            </div>
-
-            {msg.text && (
-                <div className={`p-3 text-xs rounded-lg border font-mono ${msg.type === 'error' ? 'bg-red-950/40 border-red-900 text-red-400' : 'bg-emerald-950/40 border-emerald-900 text-emerald-400'}`}>
-                    {msg.text}
+                <div>
+                    <label className="block text-slate-500 font-bold uppercase tracking-wider mb-1.5 text-[10px]">Email Address</label>
+                    <input
+                        type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                        placeholder="name@domain.co.za" required disabled={loading}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500/50 font-mono"
+                    />
                 </div>
-            )}
 
-            <form onSubmit={handleAuth} className="space-y-4">
-                {/* Render Sign Up Specific Metadata Fields */}
-                {viewState === 'signup' && (
-                    <div className="grid grid-cols-2 gap-3 animate-fade-in">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Name</label>
-                            <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-blue-500 transition-colors" required />
+                <div>
+                    <label className="block text-slate-500 font-bold uppercase tracking-wider mb-1.5 text-[10px]">Password Security Pin</label>
+                    <input
+                        type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••" required={mode === 'login'} disabled={loading}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500/50 font-mono"
+                    />
+
+                    {mode === 'login' && (
+                        <div className="text-right mt-1.5 select-none">
+                            <button
+                                type="button"
+                                onClick={handleForgotPasswordResetClick}
+                                disabled={loading}
+                                className="text-[10px] text-blue-500 hover:text-blue-400 bg-transparent border-none outline-none cursor-pointer uppercase font-bold tracking-wide transition-colors disabled:opacity-40"
+                            >
+                                Forgot Password?
+                            </button>
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Surname</label>
-                            <input type="text" value={surname} onChange={e => setSurname(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-blue-500 transition-colors" required />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Company Name</label>
-                            <input type="text" value={company} onChange={e => setCompany(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-blue-500 transition-colors" required />
+                    )}
+                </div>
+
+                {message.text && (
+                    <div className={`p-3 rounded-lg text-[11px] border leading-normal font-mono ${message.success ? 'bg-emerald-950/20 border-emerald-500/20 text-emerald-400' : 'bg-rose-950/20 border-rose-500/20 text-rose-400'}`}>
+                        <div className="flex items-center space-x-2">
+                            <span className={`h-1.5 w-1.5 rounded-full ${message.success ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            <span className="normal-case leading-normal">{message.text}</span>
                         </div>
                     </div>
                 )}
 
-                {/* Global Identity Input Field (Required for all three states) */}
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Email Address</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-blue-500 transition-colors" required />
-                </div>
-
-                {/* Render Secret Input Field (Hidden during password recovery view mode) */}
-                {viewState !== 'recovery' && (
-                    <div className="space-y-1 animate-fade-in">
-                        <div className="flex justify-between items-center">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Password</label>
-
-                            {viewState === 'login' && (
-                                <button type="button" onClick={() => { setMsg({ type: '', text: '' }); setViewState('recovery'); }} className="text-[10px] font-semibold text-blue-400 hover:text-blue-300 transition-colors cursor-pointer bg-transparent border-none p-0">
-                                    Forgot Password?
-                                </button>
-                            )}
-                        </div>
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-blue-500 transition-colors" required />
-                    </div>
-                )}
-
-                {/* MODIFIED: Mixed your main system layout gradients with the stims-hover-glow utility tags */}
-                <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs py-2.5 rounded-lg transition-all active:scale-[0.99] cursor-pointer stims-hover-glow shadow-sm uppercase tracking-wider">
-                    {loading ? 'Processing Transaction...' : ''}
-                    {!loading && viewState === 'login' && 'Secure Login Instance'}
-                    {!loading && viewState === 'signup' && 'Register Corporate Access'}
-                    {!loading && viewState === 'recovery' && 'Request Recovery Link'}
+                <button
+                    type="submit" disabled={loading}
+                    className="w-full h-11 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider text-xs rounded-lg transition-all shadow-md shadow-blue-600/10 cursor-pointer flex items-center justify-center space-x-2 stims-hover-glow transform hover:-translate-y-0.5 duration-150"
+                >
+                    {loading ? "Processing Secure Keylocks..." : mode === 'login' ? 'Authorize Secure Session ➔' : 'Register Corporate Ledger Profile ➔'}
                 </button>
             </form>
-
-            <div className="text-center pt-3 border-t border-slate-800/60 flex flex-col space-y-1.5">
-                {viewState !== 'login' && (
-                    <button onClick={() => { setMsg({ type: '', text: '' }); setViewState('login'); }} className="text-xs text-slate-500 hover:text-blue-400 transition-colors cursor-pointer bg-transparent border-none p-0">
-                        ➔ Back to account sign in view
-                    </button>
-                )}
-
-                {viewState === 'login' && (
-                    <button onClick={() => { setMsg({ type: '', text: '' }); setViewState('signup'); }} className="text-xs text-slate-500 hover:text-blue-400 transition-colors cursor-pointer bg-transparent border-none p-0">
-                        Need corporate access? Create an account here
-                    </button>
-                )}
-            </div>
-
         </div>
     );
 }
