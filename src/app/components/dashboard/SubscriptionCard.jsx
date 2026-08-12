@@ -6,58 +6,112 @@ import React from 'react';
 export default function SubscriptionCard({
     isActivePremium,
     subscription,
+    tokenRecord, // Direct row object from public.ecoroute_corporate_api_tokens
     customVehicles,
     isPending,
     onPayClick,
     onCancelPromptClick
 }) {
-    const isCancelling = subscription?.status === 'cancelling';
-    const isActuallyActive = subscription?.status === 'active';
+    const currentSubStatus = (subscription?.status || "").toLowerCase();
+    const isCancelling = ['cancelling', 'non-renewing', 'non_renewing'].includes(currentSubStatus);
+    const isActuallyActive = currentSubStatus === 'active';
+
+    // 1. DYNAMIC MATH: Calculate days left to 30 days based on last_reset_period
+    let remainingDays = 30;
+    let formattedExpiryDate = 'End of Cycle';
+
+    if (tokenRecord?.last_reset_period) {
+        try {
+            const resetDate = new Date(tokenRecord.last_reset_period);
+            resetDate.setHours(0, 0, 0, 0);
+
+            const currentDate = new Date();
+            currentDate.setHours(0, 0, 0, 0);
+
+            const msDiff = currentDate.getTime() - resetDate.getTime();
+            const daysPassed = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+
+            remainingDays = Math.max(0, 30 - daysPassed);
+
+            const expiryTargetDate = new Date(resetDate);
+            expiryTargetDate.setDate(expiryTargetDate.getDate() + 30);
+            formattedExpiryDate = expiryTargetDate.toLocaleDateString('en-ZA', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        } catch (err) {
+            console.error('[Cycle Math Error]:', err);
+        }
+    }
+
+    // 2. ACTUAL VALUES FROM ecoroute_corporate_api_tokens table columns
+    const currentApiUsage = tokenRecord?.current_monthly_usage ?? 0;
+    const maxCapacityLimit = tokenRecord?.usage_limit_cap ?? 100;
+
+    const displayTierLabel = (isActivePremium || isCancelling) ? 'PRO PLAN ACTIVE' : 'FREE PLAN';
+    const displayStatusLabel = isCancelling ? 'Non-Renewing' : (subscription?.status || 'Inactive');
 
     return (
         <div className="p-5 bg-slate-900/40 border border-slate-800 rounded-xl stims-hover-glow font-mono text-xs transition-all duration-300 text-left">
             <div className="border-b border-slate-800 pb-2.5 mb-4 flex items-center justify-between">
                 <h3 className="text-xs uppercase tracking-widest text-blue-500 font-bold">ECO INTELLIGENCE LICENSE DETAILS</h3>
-                <span className="text-[10px] text-slate-500">SYSTEM STATUS</span>
+                <span className="text-[10px] text-slate-500 font-bold">SYSTEM CONTROLS</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            {/* Core Metrics Summary Grid Block - Shows actual usage values */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
                 <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
-                    <span className="text-slate-500 text-[10px] block mb-1">ACCOUNT TIER</span>
-                    <span className="text-sm font-bold text-slate-200 uppercase tracking-wide">
-                        {isActivePremium ? 'premium' : 'free'} plan
+                    <span className="text-slate-500 text-[10px] block mb-1 uppercase tracking-wider">ACCOUNT TIER</span>
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide">
+                        {displayTierLabel}
                     </span>
                 </div>
                 <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
-                    <span className="text-slate-500 text-[10px] block mb-1">PLAN STATUS</span>
-                    <span className={`text-sm font-bold uppercase ${isCancelling ? 'text-amber-400' : isActuallyActive ? 'text-emerald-400' : 'text-slate-500'}`}>
-                        {subscription?.status || 'inactive'}
+                    <span className="text-slate-500 text-[10px] block mb-1 uppercase tracking-wider">PLAN STATUS</span>
+                    <span className={`text-xs font-bold uppercase ${isCancelling ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {displayStatusLabel}
                     </span>
                 </div>
                 <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
-                    <span className="text-slate-500 text-[10px] block mb-1">ADDED VEHICLES</span>
-                    <span className="text-sm font-bold text-blue-400">{customVehicles.length} vehicles</span>
+                    <span className="text-slate-500 text-[10px] block mb-1 uppercase tracking-wider">API USAGE VOLUME</span>
+                    <span className="text-xs font-bold text-slate-200">
+                        {currentApiUsage.toLocaleString('en-ZA')} / {maxCapacityLimit.toLocaleString('en-ZA')} REQ
+                    </span>
+                </div>
+                <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
+                    <span className="text-slate-500 text-[10px] block mb-1 uppercase tracking-wider">FLEET LOGS</span>
+                    <span className="text-xs font-bold text-blue-400 uppercase">{customVehicles.length} Vehicles</span>
                 </div>
             </div>
 
-            {subscription?.current_period_end && (isActuallyActive || isCancelling) && (
-                <div className={`mb-4 text-[11px] p-2.5 rounded-lg flex justify-between items-center border ${isCancelling ? 'bg-amber-950/10 border-amber-900/30 text-amber-400' : 'bg-slate-950/20 border-slate-800/40 text-slate-400'}`}>
-                    <span>{isCancelling ? '⚠️ ACCESS PRESERVED UNTIL CUTOFF:' : '📅 NEXT RECURRING BILLING CYCLE:'}</span>
+            {isCancelling && (
+                <div className="mb-4 text-[11px] p-3 rounded-lg flex flex-col sm:flex-row justify-between sm:items-center gap-1.5 border bg-amber-950/20 border-amber-900/40 text-amber-300">
                     <span className="font-bold">
-                        {new Date(subscription.current_period_end).toLocaleDateString('en-ZA')}
+                        ⚠️ Auto-renew disabled. Benefits downgrade to Free tier in <span className="text-white underline font-extrabold">{remainingDays} day(s)</span> on:
+                    </span>
+                    <span className="font-mono font-bold uppercase bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/50 text-amber-200 text-center shrink-0">
+                        {formattedExpiryDate}
                     </span>
                 </div>
             )}
 
+            {isActuallyActive && tokenRecord?.last_reset_period && (
+                <div className="mb-4 text-[11px] p-2.5 rounded-lg flex justify-between items-center border bg-slate-950/20 border-slate-800/40 text-slate-400">
+                    <span>📅 NEXT SCHEDULED AUTO-RENEWAL RESET WINDOW:</span>
+                    <span className="font-bold uppercase tracking-wider text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">{formattedExpiryDate}</span>
+                </div>
+            )}
+
             {subscription?.cancel_reason && (subscription.status === 'cancelled' || isCancelling) && (
-                <div className="mb-4 text-[11px] text-amber-400 bg-amber-950/10 border border-amber-950/30 p-2.5 rounded-lg">
-                    ℹ️ NOTICE: {subscription.cancel_reason}
+                <div className="mb-4 text-[11px] text-slate-400 bg-slate-950/40 border border-slate-800/80 p-2.5 rounded-lg italic">
+                    ℹ️ REGISTRY TRACKER METADATA: {subscription.cancel_reason}
                 </div>
             )}
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-900/60 pt-3">
                 <p className="text-slate-500 text-[11px] text-center sm:text-left normal-case font-sans">
-                    Premium unlocks flights, shipping calculators, and lets you add unlimited cars.
+                    Premium subscription unlocks advanced multi-modal calculation limits.
                 </p>
                 <div className="flex space-x-2 w-full sm:w-auto shrink-0 justify-end items-center">
                     {!isActuallyActive || isCancelling ? (
@@ -67,7 +121,7 @@ export default function SubscriptionCard({
                             disabled={isPending}
                             className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-mono uppercase tracking-wider text-[10px] font-bold px-3.5 py-2 rounded-lg transition-all shadow-sm shadow-blue-600/10 disabled:opacity-40 animate-pulse cursor-pointer stims-hover-glow"
                         >
-                            {isPending ? "Connecting..." : isCancelling ? "⭐ Resume / Renew Pro (ZAR)" : "⭐ Upgrade to Pro (R280 per month)"}
+                            {isPending ? "Connecting..." : isCancelling ? "⭐ Start New Subscription Early" : "⭐ Upgrade to Pro (R280/pm)"}
                         </button>
                     ) : (
                         <button

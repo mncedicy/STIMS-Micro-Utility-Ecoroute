@@ -53,7 +53,7 @@ export async function handleChargeSuccess(supabaseAdmin, eventData, userId, reso
             user_id: userId,
             organization_name: existingTokenRecord?.organization_name || 'Premium Corporate Enterprise',
             api_token: existingTokenRecord?.api_token || secureHexKey,
-            current_monthly_usage: existingTokenRecord?.current_monthly_usage || 0,
+            current_monthly_usage: 0,
             usage_limit_cap: 3000,
             total_accrued_tax_liability_zar: existingTokenRecord?.total_accrued_tax_liability_zar || 0.00,
             last_reset_period: periodStart.split('T')[0],
