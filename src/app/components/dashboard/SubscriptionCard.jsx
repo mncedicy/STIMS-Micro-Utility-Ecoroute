@@ -12,6 +12,7 @@ export default function SubscriptionCard({
     onCancelPromptClick
 }) {
     const isCancelling = subscription?.status === 'cancelling';
+    const isActuallyActive = subscription?.status === 'active';
 
     return (
         <div className="p-5 bg-slate-900/40 border border-slate-800 rounded-xl stims-hover-glow font-mono text-xs transition-all duration-300 text-left">
@@ -20,7 +21,6 @@ export default function SubscriptionCard({
                 <span className="text-[10px] text-slate-500">SYSTEM STATUS</span>
             </div>
 
-            {/* Core Metrics Summary Grid Block */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                 <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
                     <span className="text-slate-500 text-[10px] block mb-1">ACCOUNT TIER</span>
@@ -30,7 +30,7 @@ export default function SubscriptionCard({
                 </div>
                 <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
                     <span className="text-slate-500 text-[10px] block mb-1">PLAN STATUS</span>
-                    <span className={`text-sm font-bold uppercase ${isCancelling ? 'text-amber-400' : isActivePremium ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    <span className={`text-sm font-bold uppercase ${isCancelling ? 'text-amber-400' : isActuallyActive ? 'text-emerald-400' : 'text-slate-500'}`}>
                         {subscription?.status || 'inactive'}
                     </span>
                 </div>
@@ -40,8 +40,7 @@ export default function SubscriptionCard({
                 </div>
             </div>
 
-            {/* Calendar Billing Timeline Information Strip */}
-            {subscription?.current_period_end && (subscription.status === 'active' || isCancelling) && (
+            {subscription?.current_period_end && (isActuallyActive || isCancelling) && (
                 <div className={`mb-4 text-[11px] p-2.5 rounded-lg flex justify-between items-center border ${isCancelling ? 'bg-amber-950/10 border-amber-900/30 text-amber-400' : 'bg-slate-950/20 border-slate-800/40 text-slate-400'}`}>
                     <span>{isCancelling ? '⚠️ ACCESS PRESERVED UNTIL CUTOFF:' : '📅 NEXT RECURRING BILLING CYCLE:'}</span>
                     <span className="font-bold">
@@ -50,20 +49,18 @@ export default function SubscriptionCard({
                 </div>
             )}
 
-            {/* Historical Cancellation Reasoning Explanation Prompt */}
             {subscription?.cancel_reason && (subscription.status === 'cancelled' || isCancelling) && (
                 <div className="mb-4 text-[11px] text-amber-400 bg-amber-950/10 border border-amber-950/30 p-2.5 rounded-lg">
                     ℹ️ NOTICE: {subscription.cancel_reason}
                 </div>
             )}
 
-            {/* Action Row Trigger Controls Section */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-900/60 pt-3">
                 <p className="text-slate-500 text-[11px] text-center sm:text-left normal-case font-sans">
                     Premium unlocks flights, shipping calculators, and lets you add unlimited cars.
                 </p>
                 <div className="flex space-x-2 w-full sm:w-auto shrink-0 justify-end items-center">
-                    {!isActivePremium || isCancelling ? (
+                    {!isActuallyActive || isCancelling ? (
                         <button
                             type="button"
                             onClick={onPayClick}

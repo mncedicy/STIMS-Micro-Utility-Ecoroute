@@ -24,7 +24,6 @@ export default function Home() {
   const [distance, setDistance] = useState(100);
   const [unit, setUnit] = useState('km');
   const [estimate, setEstimate] = useState(null);
-  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [calcLoading, setCalcLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -46,16 +45,29 @@ export default function Home() {
 
   const syncState = async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    setUser(session?.user ?? null); if (!session?.user) setLoading(false);
+    if (session?.user) {
+      setUser(session.user);
+    } else {
+      setUser(null);
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     syncState();
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_, s) => {
-      setUser(s?.user ?? null); if (!s?.user) setLoading(false);
+      if (s?.user) {
+        setUser(s.user);
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
     });
     window.addEventListener('focus', syncState);
-    return () => { authSub?.unsubscribe(); window.removeEventListener('focus', syncState); };
+    return () => {
+      authSub?.unsubscribe();
+      window.removeEventListener('focus', syncState);
+    };
   }, []);
 
   const loadData = async (isRefreshOnly = false) => {
@@ -70,14 +82,16 @@ export default function Home() {
         setActiveApplicationMeta(appMetaRow);
       }
 
-      if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      const activeUser = session?.user;
+      if (!activeUser) return;
 
       const [prof, sub, cars, logs, tokenRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-        supabase.from('user_subscriptions').select('tier, status, current_period_start').eq('user_id', user.id).eq('app_id', 'ecoroute').maybeSingle(),
-        supabase.from('ecoroute_vehicles').select('*').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: false }),
-        supabase.from('ecoroute_emissions_logs').select('*').eq('user_id', user.id).order('emission_date', { ascending: false }),
-        supabase.from('ecoroute_corporate_api_tokens').select('*').eq('user_id', user?.id).maybeSingle()
+        supabase.from('profiles').select('*').eq('id', activeUser.id).maybeSingle(),
+        supabase.from('user_subscriptions').select('tier, status, current_period_start').eq('user_id', activeUser.id).eq('app_id', 'ecoroute').maybeSingle(),
+        supabase.from('ecoroute_vehicles').select('*').eq('user_id', activeUser.id).eq('is_active', true).order('created_at', { ascending: false }),
+        supabase.from('ecoroute_emissions_logs').select('*').eq('user_id', activeUser.id).order('emission_date', { ascending: false }),
+        supabase.from('ecoroute_corporate_api_tokens').select('*').eq('user_id', activeUser.id).maybeSingle()
       ]);
 
       setProfile(prof.data);
@@ -97,7 +111,9 @@ export default function Home() {
     }
   };
 
-  useEffect(() => { loadData(false); }, [user]);
+  useEffect(() => {
+    if (user?.id) loadData(false);
+  }, [user]);
 
   async function handleCalculate(formPayload) {
     setCalcLoading(true);
@@ -126,7 +142,6 @@ export default function Home() {
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-xs font-mono text-slate-600 select-none">AUTHENTICATING SUBDOMAIN MATRIX...</div>;
 
-  // Render Experience for unauthenticated visitors
   if (!user) {
     return (
       <div className="min-h-screen w-full bg-[#020617] text-slate-100 antialiased relative flex flex-col justify-between selection:bg-blue-500 selection:text-slate-950">
@@ -148,7 +163,8 @@ export default function Home() {
     );
   }
 
-  const isPremium = subscription.tier === 'premium' && subscription.status === 'active';
+  // FIXED IS_PREMIUM VALIDATION ENGINE: Preserves active data states across cancelled renewal cutoff intervals
+  const isPremium = subscription.tier === 'premium' && (subscription.status === 'active' || subscription.status === 'cancelling');
   const quotaReached = !isPremium && customVehicles.length >= 1;
 
   return (
@@ -174,7 +190,6 @@ export default function Home() {
             <ApiViewContainer user={user} isPremium={isPremium} />
           )}
 
-          {/* FIXED: Condition string adjusted from 'fleet_ledger' to 'fleet' to match your Navbar's router events exactly */}
           {activeViewPage === 'fleet' && (
             <FleetViewContainer
               user={user} customVehicles={customVehicles} rawLogsArray={rawLogsArray}
@@ -182,7 +197,6 @@ export default function Home() {
             />
           )}
 
-          {/* Persistent Ticket Pipeline Service */}
           <Contact user={user} profile={profile} />
         </div>
 

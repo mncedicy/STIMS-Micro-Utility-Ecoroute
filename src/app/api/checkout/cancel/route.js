@@ -1,7 +1,8 @@
+// src/app/api/checkout/cancel/route.js
+
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// FIXED: Added CORS headers to allow cross-origin requests from App 2 cleanly
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -13,16 +14,20 @@ export async function OPTIONS() {
 }
 
 export async function POST(req) {
-    // Create our internal system role admin bypass client to read subscriptions safely
     const supabaseAdmin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
     try {
-        // FIXED: Deconstruct appId dynamically from incoming client body request payload
-        const { userId, appId } = await req.json();
-        if (!userId || !appId) {
+        const AppId = 'ecoroute';
+        const body = await req.json().catch(() => ({}));
+
+        // FIXED RECONCILIATION: Extract either camelCase or snake_case request layouts safely
+        const userId = body.userId || body.user_id;
+
+        if (!userId) {
+            console.error("🚨 Cancellation Endpoint Rejection: Received an unresolvable or empty target userId identifier body context payload.", JSON.stringify(body));
             return NextResponse.json({ error: "Missing identity reference parameters." }, { status: 400, headers: corsHeaders });
         }
 
@@ -31,35 +36,31 @@ export async function POST(req) {
             .from('user_subscriptions')
             .select('*')
             .eq('user_id', userId)
-            .eq('app_id', appId) // FIXED: Swap hardcoded 'ecoroute' string with variable parameter
+            .eq('app_id', AppId)
             .maybeSingle();
 
         if (subError) {
             return NextResponse.json({ error: `Database Ledger Query Error: ${subError.message}` }, { status: 500, headers: corsHeaders });
         }
 
-        // Initialize clean parameter allocation targets
         let paystackSubscriptionCode = (sub?.stripe_subscription_id || "").trim();
-        let paystackEmailToken = (sub?.paystack_email_token || "").trim();
+        let paystackEmailToken = (sub?.paystack_pay_token || sub?.paystack_email_token || "").trim();
 
         // ========================================================================
         // WILDCARD LEDGER EXTRACTOR (BROAD TRACE BACKUP ENGINE)
         // ========================================================================
-        // If parameters are missing from user_subscriptions, query ANY non-empty
-        // transaction block inside the ledger table to extract tokens from raw logs.
         if (!paystackSubscriptionCode || !paystackEmailToken || paystackSubscriptionCode.startsWith('pending-')) {
-            console.warn(`⚠️ Profile column empty for user ${userId}. Scanning whole history ledger for ANY valid contract references...`);
+            console.warn(`⚠️ Profile column empty for user ${userId}. Scanning whole history ledger for valid EcoRoute contract references...`);
 
             const { data: ledgerEntries, error: ledgerTraceError } = await supabaseAdmin
                 .from('billing_transactions_ledger')
                 .select('paystack_subscription_code, raw_payload')
                 .eq('user_id', userId)
-                .eq('app_id', appId) // FIXED: Swap hardcoded string with dynamic appId variable
+                .eq('app_id', AppId)
                 .not('raw_payload', 'is', null)
-                .order('created_at', { ascending: false }); // Fetch newest transactions first
+                .order('created_at', { ascending: false });
 
             if (!ledgerTraceError && ledgerEntries && ledgerEntries.length > 0) {
-                // Loop through all saved ledger rows to extract the first available valid pair
                 for (const entry of ledgerEntries) {
                     const codeCandidate = (entry.paystack_subscription_code || entry.raw_payload?.data?.subscription_code || "").trim();
                     const tokenCandidate = (entry.raw_payload?.data?.email_token || entry.raw_payload?.data?.customer?.metadata?.email_token || "").trim();
@@ -71,7 +72,6 @@ export async function POST(req) {
                         paystackEmailToken = tokenCandidate;
                     }
 
-                    // Break loop early as soon as we reconstruct a complete token pair
                     if (paystackSubscriptionCode && paystackEmailToken) {
                         console.log(`✅ Success: Reconstructed subscription parameters using wildcard ledger scans.`);
                         break;
@@ -80,16 +80,15 @@ export async function POST(req) {
             }
         }
 
-        // 2. PAYSTACK GATEWAY INTEGRATION SECURITY LAYER 
+        // 2. PAYSTACK GATEWAY INTEGRATION SECURITY LAYER
         const secretKey = process.env.PAYSTACK_SECRET_KEY;
         if (!secretKey) {
             console.error("🚨 STIMS Billing: PAYSTACK_SECRET_KEY is missing from environment variables.");
             return NextResponse.json({ error: "Server configuration parameter missing from environment workspace." }, { status: 500, headers: corsHeaders });
         }
 
-        // Hard validation: If still missing after scanning every single ledger row, block the request
         if (!paystackSubscriptionCode || !paystackEmailToken || paystackSubscriptionCode.startsWith('pending-')) {
-            console.error(`❌ Cancellation Aborted: Final parameters are empty or unresolved. Code: "${paystackSubscriptionCode}", Token: "${paystackEmailToken}"`);
+            console.error(`❌ Cancellation Aborted: Final parameters are empty or unresolved for EcoRoute. Code: "${paystackSubscriptionCode}", Token: "${paystackEmailToken}"`);
             return NextResponse.json({
                 error: `Missing tracking keys. Checked user profile and history ledger rows, but no active 'SUB_' code was found. Please subscribe again to recreate valid keys.`
             }, { status: 400, headers: corsHeaders });
@@ -97,8 +96,7 @@ export async function POST(req) {
 
         console.log(`📡 Relaying cancellation intent payload processing directly to Paystack API gateway for Code: ${paystackSubscriptionCode}`);
 
-        // DISPATCH SECURE COMMONLY USED JSON REJECTION PAYLOADS TO PAYSTACK
-        const paystackResponse = await fetch(process.env.PAYSTACK_CANCEL_URL || "https://api.paystack.co/subscription/disable", {
+        const paystackResponse = await fetch(process.env.PAYSTACK_CANCEL_URL || "https://paystack.co", {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,
@@ -121,10 +119,8 @@ export async function POST(req) {
             }, { status: 502, headers: corsHeaders });
         }
 
-        console.log(`[Paystack Gateway Forward Status Success]: Command processed. Awaiting background webhook trigger execution logic hooks.`);
+        console.log(`[Paystack Gateway Forward Status Success]: Command processed for EcoRoute. Awaiting background webhook synchronization.`);
 
-        // Database row tracking state is purposely NOT modified here. 
-        // We let your webhook router handle updates upon formal event response confirmation!
         return NextResponse.json({
             success: true,
             message: "Cancellation request acknowledged by Paystack. System account state properties will sync automatically upon webhook confirmation process."

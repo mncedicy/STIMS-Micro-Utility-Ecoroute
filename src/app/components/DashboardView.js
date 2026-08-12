@@ -5,8 +5,9 @@ import React, { useState } from 'react';
 import Header from './Header';
 import DispatchForm from './DispatchForm';
 import Ledger from './Ledger';
-import SubscriptionCard from './dashboard/SubscriptionCard'; // Imported new modular card element
-import SystemDialogModal from './SystemDialogModal'; // Imported custom modal layout view
+import SubscriptionCard from './dashboard/SubscriptionCard';
+import SystemDialogModal from './SystemDialogModal';
+import { supabase } from '../lib/supabaseClient';
 
 export default function DashboardView({
     user,
@@ -28,34 +29,46 @@ export default function DashboardView({
     loadData
 }) {
     const [isPending, setIsPending] = useState(false);
-
-    // Controlled parameters modal layout state registry handles
-    const [modal, setModal] = useState({
-        isOpen: false,
-        status: 'blue',
-        title: '',
-        message: '',
-        hasCancel: false
-    });
+    const [modal, setModal] = useState({ isOpen: false, status: 'blue', title: '', message: '', hasCancel: false });
 
     const executeCancelSubscriptionRoutine = async () => {
-        // Clear open modal layer view state flags instantly
         setModal(prev => ({ ...prev, isOpen: false }));
         setIsPending(true);
+
         try {
-            // FIXED: Directly target local route src/app/api/checkout/cancel/route.js
+            // FIXED EXTRACTION: Explicit safety fallback maps both standard props and live sessions
+            let targetUserId = user?.id || user?.user?.id;
+
+            // If object keys are empty, query the active token profile cache immediately
+            if (!targetUserId) {
+                const { data: sessionWrapper } = await supabase.auth.getSession();
+                targetUserId = sessionWrapper?.session?.user?.id;
+            }
+
+            if (!targetUserId) {
+                setModal({
+                    isOpen: true,
+                    status: 'red',
+                    title: 'AUTHENTICATION LIFECYCLE BLOCK',
+                    message: 'FAILED TO TARGET REGISTRY: Your active account session parameters could not be resolved. Please reload the page and try again.',
+                    hasCancel: false
+                });
+                setIsPending(false);
+                return;
+            }
+
             const response = await fetch('/api/checkout/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId: user?.id
+                    userId: String(targetUserId).trim(), // Enforce strict flat text strings
+                    user_id: String(targetUserId).trim() // Backfill snake_case as a secondary safeguard parameter
                 })
             });
 
             const cancelResult = await response.json();
 
             if (response.ok && cancelResult.success) {
-                // FIXED WORKFLOW: Display a clean confirmation notification modal upon success submittal
                 setModal({
                     isOpen: true,
                     status: 'green',
@@ -64,7 +77,6 @@ export default function DashboardView({
                     hasCancel: false
                 });
 
-                // Allow a safe multi-second window tracker delay before auto-refreshing profile parameters data models lookups
                 setTimeout(async () => {
                     await loadData();
                 }, 2500);
@@ -87,13 +99,33 @@ export default function DashboardView({
     const handlePay = async () => {
         setIsPending(true);
         try {
-            // FIXED: Directly target local route src/app/api/checkout/initialize/route.js
+            let targetUserId = user?.id || user?.user?.id;
+            let targetUserEmail = user?.email || user?.user?.email;
+
+            if (!targetUserId || !targetUserEmail) {
+                const { data: sessionWrapper } = await supabase.auth.getSession();
+                targetUserId = sessionWrapper?.session?.user?.id;
+                targetUserEmail = sessionWrapper?.session?.user?.email;
+            }
+
+            if (!targetUserId || !targetUserEmail) {
+                setModal({
+                    isOpen: true,
+                    status: 'red',
+                    title: 'AUTHENTICATION PROFILE BLOCK',
+                    message: 'FAILED TO INITIALIZE CHECKOUT: Safe user parameters are missing from local storage references.',
+                    hasCancel: false
+                });
+                setIsPending(false);
+                return;
+            }
+
             const response = await fetch('/api/checkout/initialize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId: user?.id,
-                    userEmail: user?.email,
+                    userId: targetUserId,
+                    userEmail: targetUserEmail,
                     callbackUrl: `${window.location.origin}?stims_app_id=ecoroute`
                 })
             });
@@ -163,14 +195,12 @@ export default function DashboardView({
                 <Ledger estimate={estimate} isPremium={isActivePremium} />
             </div>
 
-            {/* FIXED PLACEMENT: Separated subscription dashboard row layout card view into a dedicated component */}
             <SubscriptionCard
                 isActivePremium={isActivePremium}
                 subscription={subscription}
                 customVehicles={customVehicles}
                 isPending={isPending}
                 onPayClick={handlePay}
-                // FIXED TRIGGER: Replaced native window confirm with your high-utility SystemDialogModal prompt
                 onCancelPromptClick={() => setModal({
                     isOpen: true,
                     status: 'blue',
@@ -180,7 +210,6 @@ export default function DashboardView({
                 })}
             />
 
-            {/* Reusable UI Alert Validation Overlay Frame Window */}
             <SystemDialogModal
                 isOpen={modal.isOpen}
                 status={modal.status}
@@ -190,7 +219,6 @@ export default function DashboardView({
                 onConfirm={modal.hasCancel ? executeCancelSubscriptionRoutine : () => setModal(prev => ({ ...prev, isOpen: false }))}
                 onCancel={modal.hasCancel ? () => setModal(prev => ({ ...prev, isOpen: false })) : null}
             />
-
         </div>
     );
 }
