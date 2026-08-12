@@ -15,11 +15,10 @@ export default function DashboardView({
     estimate, calcLoading, errorMsg, handleCalculate, subscription, loadData
 }) {
     const {
-        isPending, modal, setModal, isActivePremium, isNonRenewing, remainingDays,
+        isPending, modal, setModal, isActivePremium,
         handlePrimaryClickButton, handleCancelPromptClick, handleConfirmModal
     } = useSubscriptionActions(user, subscription, loadData);
 
-    // Pull token record cleanly from top-level estimate props or database states
     const tokenRecordRow = estimate?.tokenRecord || null;
 
     return (
@@ -30,16 +29,10 @@ export default function DashboardView({
                 </div>
             )}
 
-            {isNonRenewing && (
-                <div className="p-3 bg-blue-950/30 border border-blue-900/40 text-blue-300 text-xs rounded-xl font-mono">
-                    ℹ️ NOTICE: Auto-renew has been disabled. Your premium features allocations remain operational for **{remainingDays} days** before resetting to Sandbox boundaries.
-                </div>
-            )}
-
             <Header
                 user={user} profile={profile} isPremium={isActivePremium} quotaReached={quotaReached}
                 onSuccess={loadData} currentUsage={tokenRecordRow?.current_monthly_usage || 0}
-                limitCap={isActivePremium ? 3000 : 100}
+                limitCap={tokenRecordRow?.usage_limit_cap || (isActivePremium ? 3000 : 100)}
             />
 
             {errorMsg && (

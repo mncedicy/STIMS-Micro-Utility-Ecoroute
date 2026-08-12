@@ -5,14 +5,44 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+// STIMS Dynamic Domain Whitelist Matrix Framework
+const ALLOWED_ORIGINS = [
+    'https://stims.co.za',     // Production Application Domain
+    'https://qa.stims.co.za',  // QA Staging Sandbox Subdomain
+    'http://localhost:3000',            // Local Development Engine Workspace
+    'http://localhost:3001',            // Local Development Engine Workspace
+    'http://127.0.0.1:3000',             // Alternative Local Address
+    'http://127.0.0.1:3001'             // Alternative Local Address
+];
 
-export async function OPTIONS() {
-    return new NextResponse(null, { status: 204, headers: corsHeaders });
+/**
+ * Validates request origin against the dynamic whitelist and returns appropriate CORS headers
+ */
+function getCorsHeaders(req) {
+    const origin = req.headers.get('origin');
+
+    // Fallback headers configuration defaults
+    const headers = {
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+
+    // If the origin is explicitly included in our matrix array, reflect it securely
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        headers['Access-Control-Allow-Origin'] = origin;
+    } else {
+        // Enforce strict boundary rules if unmatched
+        headers['Access-Control-Allow-Origin'] = 'https://stims.co.za';
+    }
+
+    return headers;
+}
+
+export async function OPTIONS(req) {
+    return new NextResponse(null, {
+        status: 204,
+        headers: getCorsHeaders(req)
+    });
 }
 
 export async function POST(req) {
@@ -21,11 +51,12 @@ export async function POST(req) {
         process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
+    const corsHeaders = getCorsHeaders(req);
+
     try {
         const body = await req.json();
         const { userId, userEmail } = body;
 
-        // FIXED SCOPE: Hardcoded EcoRoute app identifier globally, stripping incoming appId body dependencies
         const AppId = 'ecoroute';
         const finalCallbackUrl = body.callbackUrl || body.callback_url;
 
@@ -39,9 +70,7 @@ export async function POST(req) {
             return NextResponse.json({ success: false, error: "Server misconfiguration." }, { status: 500, headers: corsHeaders });
         }
 
-        // ========================================================================
-        // PROFILE ENGINE LOOKUP
-        // ========================================================================
+        // Fetch corresponding user corporate profile details
         const { data: profileConfig, error: profileQueryError } = await supabaseAdmin
             .from('profiles')
             .select('first_name, surname, company')
@@ -56,9 +85,7 @@ export async function POST(req) {
         const targetSurname = profileConfig?.surname?.trim() || "";
         const targetCompany = profileConfig?.company?.trim() || "";
 
-        // ========================================================================
-        // DYNAMIC MULTI-TENANT PLATFORM LOOKUP ENGINE (LOCKED TO ECOROUTE)
-        // ========================================================================
+        // Dynamic multi-tenant platform lookup engine (Locked to ecoroute context)
         const { data: appConfig, error: appQueryError } = await supabaseAdmin
             .from('applications')
             .select('fee_amount_cents, paystack_plan_id, monetization_type')
@@ -77,15 +104,14 @@ export async function POST(req) {
         }
 
         const dynamicAmount = appConfig?.fee_amount_cents;
-
         if (!dynamicAmount) {
             return NextResponse.json({ success: false, error: "Price allocation missing for the EcoRoute configuration row." }, { status: 422, headers: corsHeaders });
         }
 
         const globalPlanIdToken = appConfig?.paystack_plan_id ? appConfig.paystack_plan_id.trim() : null;
 
-        // INITIALIZE PAYSTACK TRANSACTION VIA [Paystack API Integration](https://paystack.com)
-        const response = await fetch(process.env.PAYSTACK_INITIALIZE_URL || "https://api.paystack.co/transaction/initialize", {
+        // Initialize Paystack transaction session parameters payload
+        const response = await fetch(process.env.PAYSTACK_INITIALIZE_URL || "https://paystack.co", {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,
@@ -106,26 +132,10 @@ export async function POST(req) {
                     surname: targetSurname,
                     company: targetCompany,
                     custom_fields: [
-                        {
-                            variable_name: "user_id",
-                            display_name: "User ID",
-                            value: userId
-                        },
-                        {
-                            variable_name: "app_id",
-                            display_name: "App ID",
-                            value: AppId
-                        },
-                        {
-                            variable_name: "company_name",
-                            display_name: "Company Name",
-                            value: targetCompany
-                        },
-                        {
-                            variable_name: "customer_name",
-                            display_name: "Customer Name",
-                            value: `${targetName} ${targetSurname}`.trim()
-                        }
+                        { variable_name: "user_id", display_name: "User ID", value: userId },
+                        { variable_name: "app_id", display_name: "App ID", value: AppId },
+                        { variable_name: "company_name", display_name: "Company Name", value: targetCompany },
+                        { variable_name: "customer_name", display_name: "Customer Name", value: `${targetName} ${targetSurname}`.trim() }
                     ]
                 }
             }),

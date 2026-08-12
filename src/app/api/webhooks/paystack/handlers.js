@@ -10,6 +10,7 @@ export async function handleChargeSuccess(supabaseAdmin, eventData, userId, reso
     calculatedEnd.setDate(calculatedEnd.getDate() + 30);
 
     const subscriptionCodeToken = eventData.subscription_code || eventData.subscription?.subscription_code || null;
+    const realEmailToken = eventData.email_token || eventData.subscription?.email_token || null;
 
     // 1. Instantly log active licensing row metrics to the user subscriptions registry table
     const { error: subUpsertError } = await supabaseAdmin
@@ -24,6 +25,7 @@ export async function handleChargeSuccess(supabaseAdmin, eventData, userId, reso
                 currency: eventData.currency || 'ZAR',
                 stripe_customer_id: eventData.customer?.customer_code || null,
                 stripe_subscription_id: subscriptionCodeToken,
+                paystack_email_token: realEmailToken, // Ensure email token is saved here too
                 current_period_start: periodStart,
                 current_period_end: eventData.next_payment_date || calculatedEnd.toISOString(),
                 cancel_reason: "Premium billing transaction fully verified and processed via Paystack webhook channels.",
@@ -42,7 +44,7 @@ export async function handleChargeSuccess(supabaseAdmin, eventData, userId, reso
         .eq('user_id', userId)
         .maybeSingle();
 
-    // Reconstruct key fallback parameter metrics securely
+    // Reconstruct key fallback parameter metrics securely using global crypto API
     const secureHexKey = 'ecoroute_live_' + Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map(b => b.toString(16).padStart(2, '0')).join('');
 
@@ -118,6 +120,9 @@ export async function handleSubscriptionNotRenew(supabaseAdmin, eventData, userI
     console.log(`[Paystack Webhook Cancel Link]: Auto-renew disabled for user ${userId}. Status updated to 'cancelling' with access intact.`);
 }
 
+
+
+
 /**
  * HANDLER 4: Handles the absolute end of the paid month interval.
  */
@@ -151,6 +156,7 @@ export async function handleSubscriptionDisable(supabaseAdmin, eventData, userId
 
 /**
  * HANDLER 5: Processes monthly recurring automatic billing cycle invoice renewals.
+ * FIXED: Now flushes current_monthly_usage to 0 and updates last_reset_period securely.
  */
 export async function handleInvoiceUpdate(supabaseAdmin, eventData, userId, resolvedAppId) {
     const invoiceStatus = (eventData.status || "").toLowerCase();
@@ -174,7 +180,20 @@ export async function handleInvoiceUpdate(supabaseAdmin, eventData, userId, reso
         .eq('app_id', resolvedAppId);
 
     if (error) throw new Error(`Database invoice renewal extension dropped: ${error.message}`);
-    console.log(`🔁 [Paystack Webhook Auto-Renew]: Extended monthly accounting cycle for user ${userId} successfully.`);
+
+    // FIXED ATOMIC FLUSH: Reset the usage counter on invoice success payment loops
+    const { error: tokenResetError } = await supabaseAdmin
+        .from('ecoroute_corporate_api_tokens')
+        .update({
+            current_monthly_usage: 0,
+            usage_limit_cap: 3000,
+            last_reset_period: paidAt.split('T')[0],
+            updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+    if (tokenResetError) console.error(`⚠️ Token usage reset on invoice update dropped: ${tokenResetError.message}`);
+    console.log(`🔁 [Paystack Webhook Auto-Renew]: Extended monthly accounting cycle & reset quotas for user ${userId} successfully.`);
 }
 
 /**

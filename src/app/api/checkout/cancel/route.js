@@ -3,14 +3,37 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+// STIMS Dynamic Domain Whitelist Matrix Framework
+const ALLOWED_ORIGINS = [
+    'https://stims.co.za',     // Production Application Domain
+    'https://qa.stims.co.za',  // QA Staging Sandbox Subdomain
+    'http://localhost:3000',            // Local Development Engine Workspace
+    'http://localhost:3001',            // Local Development Engine Workspace
+    'http://127.0.0.1:3000',             // Alternative Local Address
+    'http://127.0.0.1:3001'             // Alternative Local Address
+];
 
-export async function OPTIONS() {
-    return new NextResponse(null, { status: 204, headers: corsHeaders });
+function getCorsHeaders(req) {
+    const origin = req.headers.get('origin');
+    const headers = {
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        headers['Access-Control-Allow-Origin'] = origin;
+    } else {
+        headers['Access-Control-Allow-Origin'] = 'https://stims.co.za';
+    }
+
+    return headers;
+}
+
+export async function OPTIONS(req) {
+    return new NextResponse(null, {
+        status: 204,
+        headers: getCorsHeaders(req)
+    });
 }
 
 export async function POST(req) {
@@ -19,19 +42,20 @@ export async function POST(req) {
         process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
+    const corsHeaders = getCorsHeaders(req);
+
     try {
         const AppId = 'ecoroute';
         const body = await req.json().catch(() => ({}));
 
-        // FIXED RECONCILIATION: Extract either camelCase or snake_case request layouts safely
         const userId = body.userId || body.user_id;
 
         if (!userId) {
-            console.error("🚨 Cancellation Endpoint Rejection: Received an unresolvable or empty target userId identifier body context payload.", JSON.stringify(body));
+            console.error("🚨 Cancellation Endpoint Rejection: Missing user tracking body context.");
             return NextResponse.json({ error: "Missing identity reference parameters." }, { status: 400, headers: corsHeaders });
         }
 
-        // 1. Locate the master subscription profile row for this user session inside public.user_subscriptions
+        // Locate the master subscription profile row for this user session inside public.user_subscriptions
         const { data: sub, error: subError } = await supabaseAdmin
             .from('user_subscriptions')
             .select('*')
@@ -46,11 +70,9 @@ export async function POST(req) {
         let paystackSubscriptionCode = (sub?.stripe_subscription_id || "").trim();
         let paystackEmailToken = (sub?.paystack_pay_token || sub?.paystack_email_token || "").trim();
 
-        // ========================================================================
-        // WILDCARD LEDGER EXTRACTOR (BROAD TRACE BACKUP ENGINE)
-        // ========================================================================
+        // Wildcard Ledger Extractor Backup Engine Lookup
         if (!paystackSubscriptionCode || !paystackEmailToken || paystackSubscriptionCode.startsWith('pending-')) {
-            console.warn(`⚠️ Profile column empty for user ${userId}. Scanning whole history ledger for valid EcoRoute contract references...`);
+            console.warn(`⚠️ Profile column empty for user ${userId}. Scanning history ledger for valid EcoRoute references...`);
 
             const { data: ledgerEntries, error: ledgerTraceError } = await supabaseAdmin
                 .from('billing_transactions_ledger')
@@ -80,11 +102,10 @@ export async function POST(req) {
             }
         }
 
-        // 2. PAYSTACK GATEWAY INTEGRATION SECURITY LAYER
         const secretKey = process.env.PAYSTACK_SECRET_KEY;
         if (!secretKey) {
             console.error("🚨 STIMS Billing: PAYSTACK_SECRET_KEY is missing from environment variables.");
-            return NextResponse.json({ error: "Server configuration parameter missing from environment workspace." }, { status: 500, headers: corsHeaders });
+            return NextResponse.json({ error: "Server configuration parameter missing from workspace." }, { status: 500, headers: corsHeaders });
         }
 
         if (!paystackSubscriptionCode || !paystackEmailToken || paystackSubscriptionCode.startsWith('pending-')) {

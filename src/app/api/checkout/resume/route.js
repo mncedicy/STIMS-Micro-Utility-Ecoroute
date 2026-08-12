@@ -1,15 +1,41 @@
 // src/app/api/checkout/resume/route.js
+
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+export const dynamic = 'force-dynamic';
 
-export async function OPTIONS() {
-    return new NextResponse(null, { status: 204, headers: corsHeaders });
+// STIMS Dynamic Domain Whitelist Matrix Framework
+const ALLOWED_ORIGINS = [
+    'https://stims.co.za',     // Production Application Domain
+    'https://qa.stims.co.za',  // QA Staging Sandbox Subdomain
+    'http://localhost:3000',            // Local Development Engine Workspace
+    'http://localhost:3001',            // Local Development Engine Workspace
+    'http://127.0.0.1:3000',             // Alternative Local Address
+    'http://127.0.0.1:3001'             // Alternative Local Address
+];
+
+function getCorsHeaders(req) {
+    const origin = req.headers.get('origin');
+    const headers = {
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        headers['Access-Control-Allow-Origin'] = origin;
+    } else {
+        headers['Access-Control-Allow-Origin'] = 'https://stims.co.za';
+    }
+
+    return headers;
+}
+
+export async function OPTIONS(req) {
+    return new NextResponse(null, {
+        status: 204,
+        headers: getCorsHeaders(req)
+    });
 }
 
 export async function POST(req) {
@@ -18,15 +44,18 @@ export async function POST(req) {
         process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
+    const corsHeaders = getCorsHeaders(req);
+
     try {
         const AppId = 'ecoroute';
         const body = await req.json().catch(() => ({}));
         const userId = body.userId || body.user_id;
 
         if (!userId) {
-            return NextResponse.json({ error: "Missing user identity reference parameter." }, { status: 400, headers: corsHeaders });
+            return NextResponse.json({ error: "Missing identity reference parameters." }, { status: 400, headers: corsHeaders });
         }
 
+        // 1. Locate current subscription parameters for the user
         const { data: sub, error: subError } = await supabaseAdmin
             .from('user_subscriptions')
             .select('*')
@@ -38,27 +67,41 @@ export async function POST(req) {
             return NextResponse.json({ error: `Database Ledger Query Error: ${subError.message}` }, { status: 500, headers: corsHeaders });
         }
 
-        const paystackSubscriptionCode = (sub?.stripe_subscription_id || "").trim();
-        const paystackEmailToken = (sub?.paystack_email_token || "").trim();
+        let paystackSubscriptionCode = (sub?.stripe_subscription_id || "").trim();
+        let paystackEmailToken = (sub?.paystack_pay_token || sub?.paystack_email_token || "").trim();
 
-        if (!paystackSubscriptionCode || !paystackSubscriptionCode.startsWith('SUB_')) {
-            return NextResponse.json({
-                error: "No active subscription reference found to resume. Please subscribe from scratch.",
-                requiresCheckout: true
-            }, { status: 400, headers: corsHeaders });
+        // 2. Wildcard fallback ledger check if profile values are missing
+        if (!paystackSubscriptionCode || !paystackEmailToken) {
+            const { data: ledgerEntries } = await supabaseAdmin
+                .from('billing_transactions_ledger')
+                .select('paystack_subscription_code, raw_payload')
+                .eq('user_id', userId)
+                .eq('app_id', AppId)
+                .not('raw_payload', 'is', null)
+                .order('created_at', { ascending: false });
+
+            if (ledgerEntries && ledgerEntries.length > 0) {
+                for (const entry of ledgerEntries) {
+                    const code = (entry.paystack_subscription_code || entry.raw_payload?.data?.subscription_code || "").trim();
+                    const token = (entry.raw_payload?.data?.email_token || "").trim();
+                    if (code && code.startsWith('SUB_')) paystackSubscriptionCode = code;
+                    if (token) paystackEmailToken = token;
+                    if (paystackSubscriptionCode && paystackEmailToken) break;
+                }
+            }
         }
 
         const secretKey = process.env.PAYSTACK_SECRET_KEY;
         if (!secretKey) {
-            return NextResponse.json({ error: "Server misconfiguration parameter missing." }, { status: 500, headers: corsHeaders });
+            return NextResponse.json({ error: "Server configuration parameter missing." }, { status: 500, headers: corsHeaders });
         }
 
-        console.log(`📡 Relaying subscription resume request to Paystack for Code: ${paystackSubscriptionCode}`);
+        if (!paystackSubscriptionCode || !paystackEmailToken) {
+            return NextResponse.json({ error: "No active or resumable Paystack subscription code found." }, { status: 400, headers: corsHeaders });
+        }
 
-        // RESUME ENDPOINT URL with fallback matching your specification
-        const targetResumeUrl = process.env.PAYSTACK_RESUME_URL || "https://api.paystack.co/subscription/enable";
-
-        const paystackResponse = await fetch(targetResumeUrl, {
+        // 3. Hit Paystack's enable/resume endpoint
+        const paystackResponse = await fetch("https://paystack.co", {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,
@@ -75,29 +118,29 @@ export async function POST(req) {
         const paystackResult = await paystackResponse.json();
 
         if (!paystackResponse.ok || !paystackResult.status) {
-            const errorMsg = paystackResult.message || '';
-            console.error("❌ Paystack Resume Pipeline Rejected:", JSON.stringify(paystackResult, null, 2));
-
-            // Catch hard-cancelled state from Paystack and signal front-end to trigger new checkout
-            if (errorMsg.toLowerCase().includes('cancelled') || errorMsg.toLowerCase().includes('cannot be reactivated')) {
-                return NextResponse.json({
-                    error: "This subscription has fully expired and cannot be resumed directly. Please initialize a new checkout session.",
-                    requiresCheckout: true
-                }, { status: 422, headers: corsHeaders });
-            }
-
             return NextResponse.json({
-                error: `Paystack Re-activation Failed: ${errorMsg || 'Verification mismatch error.'}`
+                error: `Paystack Resume Rejected: ${paystackResult.message || 'Unable to re-enable renewals.'}`
             }, { status: 502, headers: corsHeaders });
         }
 
+        // 4. Update local DB status back to active immediately
+        await supabaseAdmin
+            .from('user_subscriptions')
+            .update({
+                status: 'active',
+                cancel_reason: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('user_id', userId)
+            .eq('app_id', AppId);
+
         return NextResponse.json({
             success: true,
-            message: "Re-activation command sent to Paystack. Database will sync automatically when the webhook is received."
+            message: "Subscription auto-renewal successfully resumed."
         }, { status: 200, headers: corsHeaders });
 
     } catch (error) {
-        console.error("🚨 Subscription Resume API Error:", error.message);
+        console.error("🚨 Resume Route Error:", error.message);
         return NextResponse.json({ error: error.message }, { status: 500, headers: corsHeaders });
     }
 }

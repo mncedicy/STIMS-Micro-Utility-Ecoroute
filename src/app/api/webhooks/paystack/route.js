@@ -12,6 +12,8 @@ import {
     handleInvoiceUpdate
 } from './handlers';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req) {
     let rawBody;
     let paystackSignature;
@@ -79,6 +81,7 @@ export async function POST(req) {
     }
 
     const resolvedSubscriptionCode = eventData.subscription_code || eventData.subscription?.subscription_code || null;
+    const resolvedEmailToken = eventData.email_token || eventData.subscription?.email_token || null;
 
     const json = {
         user_id: userId,
@@ -86,6 +89,7 @@ export async function POST(req) {
         event_type: event,
         paystack_reference: eventData.reference || null,
         paystack_subscription_code: resolvedSubscriptionCode,
+        paystack_pay_token: resolvedEmailToken, // Captured directly for safe resumes/disables
         amount_cents: eventData.amount || eventData.subscription?.amount || 0,
         currency: eventData.currency || 'ZAR',
         payment_channel: eventData.channel || null,

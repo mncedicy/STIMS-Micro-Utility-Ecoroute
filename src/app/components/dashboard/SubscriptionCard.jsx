@@ -6,7 +6,7 @@ import React from 'react';
 export default function SubscriptionCard({
     isActivePremium,
     subscription,
-    tokenRecord, // Direct row object from public.ecoroute_corporate_api_tokens
+    tokenRecord,
     customVehicles,
     isPending,
     onPayClick,
@@ -16,7 +16,6 @@ export default function SubscriptionCard({
     const isCancelling = ['cancelling', 'non-renewing', 'non_renewing'].includes(currentSubStatus);
     const isActuallyActive = currentSubStatus === 'active';
 
-    // 1. DYNAMIC MATH: Calculate days left to 30 days based on last_reset_period
     let remainingDays = 30;
     let formattedExpiryDate = 'End of Cycle';
 
@@ -45,7 +44,6 @@ export default function SubscriptionCard({
         }
     }
 
-    // 2. ACTUAL VALUES FROM ecoroute_corporate_api_tokens table columns
     const currentApiUsage = tokenRecord?.current_monthly_usage ?? 0;
     const maxCapacityLimit = tokenRecord?.usage_limit_cap ?? 100;
 
@@ -59,7 +57,6 @@ export default function SubscriptionCard({
                 <span className="text-[10px] text-slate-500 font-bold">SYSTEM CONTROLS</span>
             </div>
 
-            {/* Core Metrics Summary Grid Block - Shows actual usage values */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
                 <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
                     <span className="text-slate-500 text-[10px] block mb-1 uppercase tracking-wider">ACCOUNT TIER</span>
@@ -97,7 +94,7 @@ export default function SubscriptionCard({
             )}
 
             {isActuallyActive && tokenRecord?.last_reset_period && (
-                <div className="mb-4 text-[11px] p-2.5 rounded-lg flex justify-between items-center border bg-slate-950/20 border-slate-800/40 text-slate-400">
+                <div className="mb-4 text-[11px] text-2.5 rounded-lg flex justify-between items-center border bg-slate-950/20 border-slate-800/40 text-slate-400 p-2.5">
                     <span>📅 NEXT SCHEDULED AUTO-RENEWAL RESET WINDOW:</span>
                     <span className="font-bold uppercase tracking-wider text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">{formattedExpiryDate}</span>
                 </div>
@@ -134,6 +131,17 @@ export default function SubscriptionCard({
                         </button>
                     )}
                 </div>
+            </div>
+
+            {/* No Refund & Legal Link Footer */}
+            <div className="mt-3 pt-2 border-t border-slate-900/40 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-500 gap-1">
+                <span>All purchases are final. No refunds provided.</span>
+                <a
+                    href="/legal"
+                    className="text-blue-400 hover:underline hover:text-blue-300 transition-colors"
+                >
+                    Terms & Legal Policy
+                </a>
             </div>
         </div>
     );
