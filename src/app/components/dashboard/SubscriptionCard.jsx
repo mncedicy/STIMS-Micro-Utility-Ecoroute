@@ -11,6 +11,8 @@ export default function SubscriptionCard({
     onPayClick,
     onCancelPromptClick
 }) {
+    const isCancelling = subscription?.status === 'cancelling';
+
     return (
         <div className="p-5 bg-slate-900/40 border border-slate-800 rounded-xl stims-hover-glow font-mono text-xs transition-all duration-300 text-left">
             <div className="border-b border-slate-800 pb-2.5 mb-4 flex items-center justify-between">
@@ -28,7 +30,7 @@ export default function SubscriptionCard({
                 </div>
                 <div className="bg-slate-950/50 border border-slate-800/60 p-3 rounded-lg">
                     <span className="text-slate-500 text-[10px] block mb-1">PLAN STATUS</span>
-                    <span className={`text-sm font-bold uppercase ${isActivePremium ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    <span className={`text-sm font-bold uppercase ${isCancelling ? 'text-amber-400' : isActivePremium ? 'text-emerald-400' : 'text-slate-500'}`}>
                         {subscription?.status || 'inactive'}
                     </span>
                 </div>
@@ -39,19 +41,19 @@ export default function SubscriptionCard({
             </div>
 
             {/* Calendar Billing Timeline Information Strip */}
-            {subscription?.current_period_end && subscription.status === 'active' && (
-                <div className="mb-4 text-[11px] text-slate-400 bg-slate-950/20 border border-slate-800/40 p-2.5 rounded-lg flex justify-between items-center">
-                    <span>📅 NEXT RECURRING BILLING CYCLE:</span>
-                    <span className="font-bold text-slate-300">
+            {subscription?.current_period_end && (subscription.status === 'active' || isCancelling) && (
+                <div className={`mb-4 text-[11px] p-2.5 rounded-lg flex justify-between items-center border ${isCancelling ? 'bg-amber-950/10 border-amber-900/30 text-amber-400' : 'bg-slate-950/20 border-slate-800/40 text-slate-400'}`}>
+                    <span>{isCancelling ? '⚠️ ACCESS PRESERVED UNTIL CUTOFF:' : '📅 NEXT RECURRING BILLING CYCLE:'}</span>
+                    <span className="font-bold">
                         {new Date(subscription.current_period_end).toLocaleDateString('en-ZA')}
                     </span>
                 </div>
             )}
 
             {/* Historical Cancellation Reasoning Explanation Prompt */}
-            {subscription?.cancel_reason && subscription.status === 'cancelled' && (
-                <div className="mb-4 text-[11px] text-rose-400 bg-rose-950/10 border border-rose-950/30 p-2.5 rounded-lg">
-                    ℹ️ CANCELLATION INSIGHT: {subscription.cancel_reason}
+            {subscription?.cancel_reason && (subscription.status === 'cancelled' || isCancelling) && (
+                <div className="mb-4 text-[11px] text-amber-400 bg-amber-950/10 border border-amber-950/30 p-2.5 rounded-lg">
+                    ℹ️ NOTICE: {subscription.cancel_reason}
                 </div>
             )}
 
@@ -61,14 +63,14 @@ export default function SubscriptionCard({
                     Premium unlocks flights, shipping calculators, and lets you add unlimited cars.
                 </p>
                 <div className="flex space-x-2 w-full sm:w-auto shrink-0 justify-end items-center">
-                    {!isActivePremium ? (
+                    {!isActivePremium || isCancelling ? (
                         <button
                             type="button"
                             onClick={onPayClick}
                             disabled={isPending}
                             className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-mono uppercase tracking-wider text-[10px] font-bold px-3.5 py-2 rounded-lg transition-all shadow-sm shadow-blue-600/10 disabled:opacity-40 animate-pulse cursor-pointer stims-hover-glow"
                         >
-                            {isPending ? "Connecting..." : "⭐ Upgrade to Pro (R280 per month)"}
+                            {isPending ? "Connecting..." : isCancelling ? "⭐ Resume / Renew Pro (ZAR)" : "⭐ Upgrade to Pro (R280 per month)"}
                         </button>
                     ) : (
                         <button

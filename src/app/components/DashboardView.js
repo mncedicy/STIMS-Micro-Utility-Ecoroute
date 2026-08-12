@@ -43,12 +43,12 @@ export default function DashboardView({
         setModal(prev => ({ ...prev, isOpen: false }));
         setIsPending(true);
         try {
-            const response = await fetch(process.env.NEXT_PUBLIC_PAYSTACK_CANCEL_API_URL, {
+            // FIXED: Directly target local route src/app/api/checkout/cancel/route.js
+            const response = await fetch('/api/checkout/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId: user?.id,
-                    appId: "ecoroute",
+                    userId: user?.id
                 })
             });
 
@@ -87,13 +87,13 @@ export default function DashboardView({
     const handlePay = async () => {
         setIsPending(true);
         try {
-            const response = await fetch(process.env.NEXT_PUBLIC_PAYSTACK_INITIALIZE_API_URL, {
+            // FIXED: Directly target local route src/app/api/checkout/initialize/route.js
+            const response = await fetch('/api/checkout/initialize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user?.id,
                     userEmail: user?.email,
-                    appId: "ecoroute",
                     callbackUrl: `${window.location.origin}?stims_app_id=ecoroute`
                 })
             });
@@ -124,7 +124,7 @@ export default function DashboardView({
         }
     };
 
-    const isActivePremium = subscription && subscription.status === 'active' && subscription.tier === 'premium';
+    const isActivePremium = subscription && (subscription.status === 'active' || subscription.status === 'cancelling') && subscription.tier === 'premium';
 
     return (
         <div className="space-y-6 w-full animate-fade-in text-left">

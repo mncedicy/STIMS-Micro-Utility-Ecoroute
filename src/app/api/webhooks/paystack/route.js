@@ -46,21 +46,12 @@ export async function POST(req) {
     const event = payload.event;
     const eventData = payload.data;
 
-    let AppId = eventData.metadata?.app_id;
-    let planCode = eventData.plan?.plan_code;
-    let email = eventData.customer?.email;
-
-    if (planCode && !AppId) {
-        const { data: appRegister } = await supabaseAdmin
-            .from('applications')
-            .select('app_id')
-            .eq('paystack_plan_id', planCode)
-            .maybeSingle();
-        if (appRegister) AppId = appRegister.app_id;
-    }
+    // FIXED SCOPE: Universally assigned to EcoRoute only
+    const AppId = 'ecoroute';
+    const email = eventData.customer?.email || eventData.subscription?.customer?.email;
 
     // IDENTITY ENGINE MATRIX
-    let userId = eventData.metadata?.user_id;
+    let userId = eventData.metadata?.user_id || eventData.subscription?.customer?.metadata?.user_id;
 
     if (!userId && email) {
         const { data: matchedRowByCode } = await supabaseAdmin
@@ -72,7 +63,6 @@ export async function POST(req) {
         if (matchedRowByCode) userId = matchedRowByCode.user_id;
     }
 
-
     if (!userId && eventData.customer?.customer_code) {
         const { data: matchedRowByCode } = await supabaseAdmin
             .from('user_subscriptions')
@@ -83,24 +73,26 @@ export async function POST(req) {
         if (matchedRowByCode) userId = matchedRowByCode.user_id;
     }
 
-
     if (!userId) {
-        console.error(`🚨 Paystack Webhook Error: Could not resolve target user identification context.`);
+        console.error(`🚨 Paystack Webhook Error: Could not resolve target user identification context for EcoRoute.`);
         return NextResponse.json({ received: false, error: "Identity unresolvable" }, { status: 200 });
     }
+
+    const resolvedSubscriptionCode = eventData.subscription_code || eventData.subscription?.subscription_code || null;
 
     const json = {
         user_id: userId,
         app_id: AppId,
         event_type: event,
         paystack_reference: eventData.reference || null,
-        paystack_subscription_code: eventData.subscription_code || null,
-        amount_cents: eventData.amount || 0,
+        paystack_subscription_code: resolvedSubscriptionCode,
+        amount_cents: eventData.amount || eventData.subscription?.amount || 0,
         currency: eventData.currency || 'ZAR',
         payment_channel: eventData.channel || null,
         gateway_status: eventData.status || 'processed',
         raw_payload: payload
     };
+
     // LEDGER AUDITING
     const { error: ledgerError } = await supabaseAdmin
         .from('billing_transactions_ledger')
