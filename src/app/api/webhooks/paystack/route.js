@@ -48,21 +48,23 @@ export async function POST(req) {
     const event = payload.event;
     const eventData = payload.data;
 
-    // UNIVERSALLY SIGNED TO ECOROUTE APPS
     const AppId = 'ecoroute';
     const email = eventData.customer?.email || eventData.subscription?.customer?.email;
 
-    // IDENTITY ENGINE MATRIX
-    let userId = eventData.metadata?.user_id || eventData.subscription?.customer?.metadata?.user_id;
+    // 1. IDENTITY ENGINE MATRIX: Try metadata first
+    let userId = eventData.metadata?.user_id ||
+        eventData.subscription?.customer?.metadata?.user_id ||
+        eventData.metadata?.custom_fields?.find(f => f.variable_name === 'user_id')?.value;
 
+    // 2. Try matching existing subscription rows by email or customer code
     if (!userId && email) {
-        const { data: matchedRowByCode } = await supabaseAdmin
+        const { data: matchedRowByEmail } = await supabaseAdmin
             .from('user_subscriptions')
             .select('user_id')
             .eq('user_email', email)
             .eq('app_id', AppId)
             .maybeSingle();
-        if (matchedRowByCode) userId = matchedRowByCode.user_id;
+        if (matchedRowByEmail) userId = matchedRowByEmail.user_id;
     }
 
     if (!userId && eventData.customer?.customer_code) {
@@ -72,17 +74,44 @@ export async function POST(req) {
             .eq('stripe_customer_id', eventData.customer?.customer_code)
             .eq('app_id', AppId)
             .maybeSingle();
-        if (matchedRowByCode) userId = matchedRowByCode.user_id;
+        if (matchedRowByCode) userId = matchedRowByCode.customer_code; // fallback ref
+    }
+
+    // 3. PRODUCTION FALLBACK FOR NEW USERS: Query Supabase Auth Schema directly via email match
+    if (!userId && email) {
+        const { data: authUserData, error: authErr } = await supabaseAdmin
+            .rpc('get_user_id_by_email', { target_email: email }) // or direct query if permissions allow
+            .maybeSingle();
+
+        // If you don't have a custom RPC, query auth.users using service role client loop:
+        if (!authUserData) {
+            const { data: profileMatch } = await supabaseAdmin
+                .from('users') // or profiles table if you replicate auth users there
+                .select('id')
+                .eq('email', email)
+                .maybeSingle();
+            if (profileMatch) userId = profileMatch.id;
+        } else {
+            userId = authUserData.id;
+        }
     }
 
     if (!userId) {
-        console.error(`🚨 Paystack Webhook Error: Could not resolve target user identification context for EcoRoute.`);
-        return NextResponse.json({ received: false, error: "Identity unresolvable" }, { status: 200 });
+        console.error(`🚨 Paystack Webhook Fatal Warning: Could not resolve target user identification context for email: ${email}. Storing payload to ledger for manual audit review.`);
+
+        // Still return 200 so Paystack doesn't retry infinitely, but log partial data to ledger
+        await supabaseAdmin.from('billing_transactions_ledger').insert({
+            app_id: AppId,
+            event_type: event,
+            paystack_reference: eventData.reference || null,
+            gateway_status: 'orphan_unresolved_user',
+            raw_payload: payload
+        });
+
+        return NextResponse.json({ received: true, warning: "Identity unresolvable, logged to orphan ledger" }, { status: 200 });
     }
 
-    // FIXED TOKEN EXTRACTOR: Looks inside child objects for valid token keys variations natively
     const resolvedSubscriptionCode = eventData.subscription_code || eventData.subscription?.subscription_code || null;
-
     const resolvedEmailToken = eventData.email_token ||
         eventData.authorization?.email_token ||
         eventData.subscription?.email_token ||
@@ -95,7 +124,7 @@ export async function POST(req) {
         event_type: event,
         paystack_reference: eventData.reference || null,
         paystack_subscription_code: resolvedSubscriptionCode,
-        paystack_pay_token: resolvedEmailToken, // Injected token accurately here into ledger
+        paystack_pay_token: resolvedEmailToken,
         amount_cents: eventData.amount || eventData.subscription?.amount || 0,
         currency: eventData.currency || 'ZAR',
         payment_channel: eventData.channel || null,
@@ -103,14 +132,12 @@ export async function POST(req) {
         raw_payload: payload
     };
 
-    // LEDGER AUDITING
     const { error: ledgerError } = await supabaseAdmin
         .from('billing_transactions_ledger')
         .insert(json);
 
-    if (ledgerError) console.error(`🚨 History Ledger Audit Failure: ${ledgerError.message} ${JSON.stringify(json)}`);
+    if (ledgerError) console.error(`🚨 History Ledger Audit Failure: ${ledgerError.message}`);
 
-    // ROUTER ROUTINES SWITCH
     try {
         switch (event) {
             case 'charge.success':
