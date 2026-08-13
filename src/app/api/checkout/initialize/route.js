@@ -94,6 +94,30 @@ export async function POST(req) {
             .eq('app_id', AppId)
             .maybeSingle();
 
+
+        const periodStart = new Date().toISOString();
+        const calculatedEnd = new Date(periodStart);
+        calculatedEnd.setDate(calculatedEnd.getDate() + 30);
+
+        // Safe creation: Only initializes the default row if it doesn't already exist
+        const { error } = await supabaseAdmin
+            .from('user_subscriptions')
+            .insert({
+                user_id: userId,
+                app_id: AppId,
+                status: 'inactive',
+                tier: 'free',
+                user_email: userEmail,
+                current_period_start: periodStart,
+                current_period_end: calculatedEnd.toISOString(),
+                updated_at: new Date().toISOString()
+            }, { ignoreDuplicates: true });
+
+        if (error) {
+            console.warn(`[Hub Billing Guard]: Subscription initialization insert notice: ${error.message}`);
+        }
+
+
         if (appQueryError) {
             console.warn(`[Hub Billing Guard]: Database query trace warning: ${appQueryError.message}`);
         }
