@@ -60,13 +60,60 @@ export function useSubscriptionActions(user, subscription, loadData) {
         } finally { setIsPending(false); }
     };
 
-    // Safe, verified mathematical calculations for remaining period timeline steps
-    const rawEndDate = subscription?.next_payment_date || subscription?.current_period_end || subscription?.expires_at;
-    const expiryDateObj = rawEndDate ? new Date(rawEndDate) : null;
-    const formattedExpiryDate = expiryDateObj ? expiryDateObj.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : 'the end of your billing cycle';
+    const executeResumeRoutine = async () => {
+        setModal(p => ({ ...p, isOpen: false }));
+        setIsPending(true);
+        try {
+            const { targetUserId } = await getTargetUser();
+            const res = await fetch('/api/checkout/resume', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: targetUserId, user_id: targetUserId })
+            });
+            const data = await res.json();
 
-    const diffTime = expiryDateObj ? expiryDateObj.getTime() - new Date().getTime() : 0;
-    const remainingDays = diffTime > 0 ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0;
+            // FIXED FALLBACK: Catch hard gateway rejections when the contract token is permanently dead
+            if (!res.ok || data.error?.toLowerCase().includes('cancelled') || data.error?.toLowerCase().includes('cannot be reactivated')) {
+                setModal({
+                    isOpen: true,
+                    status: 'blue',
+                    title: 'RE-INITIALIZING PLAN CONTRACT',
+                    message: 'This subscription signature has expired on Paystack. Redirecting you to open a fresh secure checkout portal loop...',
+                    hasCancel: false,
+                    actionType: null
+                });
+
+                // Triggers fresh payment module after short notice reading duration window closes
+                setTimeout(() => {
+                    handlePayOrInitializeTrigger();
+                }, 2000);
+                return;
+            }
+
+            if (res.ok && data.success) {
+                setModal({ isOpen: true, status: 'green', title: 'AUTO-RENEWAL RESUMED', message: 'Your subscription renewal has been successfully re-enabled.', hasCancel: false, actionType: null });
+                setTimeout(() => loadData(), 2500);
+            } else throw new Error(data.error || 'Failed to resume auto-renewal.');
+        } catch (err) {
+            setModal({ isOpen: true, status: 'red', title: 'RESUME ERROR', message: err.message, hasCancel: false, actionType: null });
+        } finally { setIsPending(false); }
+    };
+
+    const rawEndDate = subscription?.current_period_end;
+    const expiryDateObj = rawEndDate ? new Date(rawEndDate) : null;
+    const isValidDate = expiryDateObj && !isNaN(expiryDateObj.getTime());
+    const formattedExpiryDate = isValidDate ? expiryDateObj.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : 'the end of your billing cycle';
+
+    let remainingDays = 0;
+    if (isValidDate) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const targetDay = new Date(expiryDateObj);
+        targetDay.setHours(0, 0, 0, 0);
+
+        const diffTime = targetDay.getTime() - today.getTime();
+        remainingDays = diffTime > 0 ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0;
+    }
 
     const currentSubStatus = (subscription?.status || "").toLowerCase();
     const isNonRenewing = ['cancelling', 'non-renewing', 'non_renewing'].includes(currentSubStatus);
@@ -74,14 +121,13 @@ export function useSubscriptionActions(user, subscription, loadData) {
 
     const handlePrimaryClickButton = () => {
         if (isNonRenewing) {
-            // FIXED OPT-IN WARNING: Clearly prompt warning notification but ALLOW immediate checkout creation path
             setModal({
                 isOpen: true,
                 status: 'blue',
-                title: 'START NEW SUBSCRIPTION PLAN',
-                message: `Your active plan is set to expire on ${formattedExpiryDate} (${remainingDays} days left). Starting a new subscription now will bill you immediately. Would you like to proceed to checkout?`,
+                title: 'RESUME AUTO-RENEWAL',
+                message: `Your active plan is set to expire on ${formattedExpiryDate} (${remainingDays} days left). Would you like to resume automatic renewals so your plan stays active without extra charges?`,
                 hasCancel: true,
-                actionType: 'initialize_new'
+                actionType: 'resume'
             });
         } else {
             handlePayOrInitializeTrigger();
@@ -94,12 +140,13 @@ export function useSubscriptionActions(user, subscription, loadData) {
 
     const handleConfirmModal = () => {
         if (modal.actionType === 'cancel') executeCancelRoutine();
+        else if (modal.actionType === 'resume') executeResumeRoutine();
         else if (modal.actionType === 'initialize_new') handlePayOrInitializeTrigger();
         else setModal(p => ({ ...p, isOpen: false }));
     };
 
     return {
         isPending, modal, setModal, isActivePremium, isNonRenewing, remainingDays, formattedExpiryDate,
-        handlePrimaryClickButton, handleCancelPromptClick, handleConfirmModal
+        handlePrimaryClickButton, handleCancelPromptClick, handleConfirmModal, handlePayOrInitializeTrigger
     };
 }

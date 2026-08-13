@@ -16,32 +16,27 @@ export default function SubscriptionCard({
     const isCancelling = ['cancelling', 'non-renewing', 'non_renewing'].includes(currentSubStatus);
     const isActuallyActive = currentSubStatus === 'active';
 
-    let remainingDays = 30;
-    let formattedExpiryDate = 'End of Cycle';
+    // Target the verified column string
+    const rawEndDate = subscription?.current_period_end;
 
-    if (tokenRecord?.last_reset_period) {
-        try {
-            const resetDate = new Date(tokenRecord.last_reset_period);
-            resetDate.setHours(0, 0, 0, 0);
+    const expiryDateObj = rawEndDate ? new Date(rawEndDate) : null;
+    const isValidDate = expiryDateObj && !isNaN(expiryDateObj.getTime());
 
-            const currentDate = new Date();
-            currentDate.setHours(0, 0, 0, 0);
+    const formattedExpiryDate = isValidDate
+        ? expiryDateObj.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' })
+        : 'End of Cycle';
 
-            const msDiff = currentDate.getTime() - resetDate.getTime();
-            const daysPassed = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+    // FIXED: Stripped hourly time offsets to guarantee precise whole-day calculations
+    let remainingDays = 0;
+    if (isValidDate) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-            remainingDays = Math.max(0, 30 - daysPassed);
+        const targetDay = new Date(expiryDateObj);
+        targetDay.setHours(0, 0, 0, 0);
 
-            const expiryTargetDate = new Date(resetDate);
-            expiryTargetDate.setDate(expiryTargetDate.getDate() + 30);
-            formattedExpiryDate = expiryTargetDate.toLocaleDateString('en-ZA', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
-        } catch (err) {
-            console.error('[Cycle Math Error]:', err);
-        }
+        const diffTime = targetDay.getTime() - today.getTime();
+        remainingDays = diffTime > 0 ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0;
     }
 
     const currentApiUsage = tokenRecord?.current_monthly_usage ?? 0;
@@ -85,7 +80,7 @@ export default function SubscriptionCard({
             {isCancelling && (
                 <div className="mb-4 text-[11px] p-3 rounded-lg flex flex-col sm:flex-row justify-between sm:items-center gap-1.5 border bg-amber-950/20 border-amber-900/40 text-amber-300">
                     <span className="font-bold">
-                        ⚠️ Auto-renew disabled. Benefits downgrade to Free tier in <span className="text-white underline font-extrabold">{remainingDays} day(s)</span> on:
+                        ⚠️ Auto-renew disabled. Premium features access limits downgrade to Free tier in <span className="text-white underline font-extrabold">{remainingDays} day(s)</span> on:
                     </span>
                     <span className="font-mono font-bold uppercase bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/50 text-amber-200 text-center shrink-0">
                         {formattedExpiryDate}
@@ -93,9 +88,9 @@ export default function SubscriptionCard({
                 </div>
             )}
 
-            {isActuallyActive && tokenRecord?.last_reset_period && (
-                <div className="mb-4 text-[11px] text-2.5 rounded-lg flex justify-between items-center border bg-slate-950/20 border-slate-800/40 text-slate-400 p-2.5">
-                    <span>📅 NEXT SCHEDULED AUTO-RENEWAL RESET WINDOW:</span>
+            {isActuallyActive && formattedExpiryDate && (
+                <div className="mb-4 text-[11px] p-2.5 rounded-lg flex justify-between items-center border bg-slate-950/20 border-slate-800/40 text-slate-400">
+                    <span>📅 NEXT RECURRING BILLING CYCLE:</span>
                     <span className="font-bold uppercase tracking-wider text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">{formattedExpiryDate}</span>
                 </div>
             )}
@@ -108,7 +103,7 @@ export default function SubscriptionCard({
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-900/60 pt-3">
                 <p className="text-slate-500 text-[11px] text-center sm:text-left normal-case font-sans">
-                    Premium subscription unlocks advanced multi-modal calculation limits.
+                    Premium subscription unlocks advanced cargo carbon calculation tools.
                 </p>
                 <div className="flex space-x-2 w-full sm:w-auto shrink-0 justify-end items-center">
                     {!isActuallyActive || isCancelling ? (
@@ -133,15 +128,9 @@ export default function SubscriptionCard({
                 </div>
             </div>
 
-            {/* No Refund & Legal Link Footer */}
             <div className="mt-3 pt-2 border-t border-slate-900/40 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-500 gap-1">
                 <span>All purchases are final. No refunds provided.</span>
-                <a
-                    href="/legal"
-                    className="text-blue-400 hover:underline hover:text-blue-300 transition-colors"
-                >
-                    Terms & Legal Policy
-                </a>
+                <a href="/legal" className="text-blue-400 hover:underline hover:text-blue-300 transition-colors">Terms & Legal Policy</a>
             </div>
         </div>
     );

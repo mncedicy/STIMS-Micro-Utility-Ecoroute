@@ -1,13 +1,9 @@
 // /src/app/actions/email.js
 "use server";
 
-import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 import { generateComplianceEmailHtml } from '../utils/emailTemplateEngine';
-
-const resendKey = process.env.RESEND_API_KEY;
-const resend = resendKey ? new Resend(resendKey) : null;
-const destinationEmail = process.env.FORWARD_DESTINATION_EMAIL;
+import { sendSystemNotification } from '../utils/emailEngine';
 
 // Safe administrative bypass client instance
 const supabaseAdmin = createClient(
@@ -16,13 +12,10 @@ const supabaseAdmin = createClient(
 );
 
 /**
- * Securely emails fully structured jsPDF carbon audit documents straight to the user
+ * Securely emails fully structured jsPDF carbon audit documents straight to the user 
+ * via the automated primary (Resend) -> fallback (Brevo SMTP) notification engine.
  */
 export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadEnvelope) {
-    if (!resend) {
-        return { success: false, error: "Email delivery system is not configured." };
-    }
-
     const finalTargetEmailAddress = userEmail;
     if (!finalTargetEmailAddress) {
         return { success: false, error: "No target email address has been provided." };
@@ -109,16 +102,11 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
             displayId
         });
 
-        const emailPayload = {
-            from: 'EcoRoute <noreply@stims.co.za>',
-            to: [finalTargetEmailAddress.trim().toLowerCase()],
-            subject: `Stims EcoRoute Compliance Audit Report Update`,
-            html: compiledHtmlContent
-        };
-
+        // Prepare attachments array for the unified engine if base64 data exists
+        let attachments = [];
         const rawBase64DataString = payloadEnvelope?.data;
         if (rawBase64DataString) {
-            emailPayload.attachments = [
+            attachments = [
                 {
                     filename: `ecoroute_compliance_report_${displayId}.pdf`,
                     content: Buffer.from(rawBase64DataString, 'base64'),
@@ -127,10 +115,22 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
             ];
         }
 
-        await resend.emails.send(emailPayload);
+        // Delegate dispatch through the multi-provider failover engine module
+        const dispatchResult = await sendSystemNotification({
+            from: 'EcoRoute <noreply@stims.co.za>',
+            to: [finalTargetEmailAddress.trim().toLowerCase()],
+            subject: `Stims EcoRoute Compliance Audit Report Update`,
+            html: compiledHtmlContent,
+            attachments: attachments
+        });
+
+        if (!dispatchResult.success) {
+            throw new Error(dispatchResult.error || "Failed to deliver compliance report via available mail routes.");
+        }
+
         return { success: true, message: "The identical PDF report file has been emailed successfully!" };
     } catch (err) {
-        console.error('[Resend Email Action Exception]:', err);
+        console.error('[Email Action Exception]:', err);
         return { success: false, error: err.message || "Failed to deliver the email report." };
     }
 }

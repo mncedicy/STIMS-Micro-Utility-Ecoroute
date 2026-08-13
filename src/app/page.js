@@ -1,7 +1,7 @@
 // /src/app/page.jsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Ticker from './components/Ticker';
 import AuthScreen from './components/AuthScreen';
 import FleetManager from './components/FleetManager';
@@ -86,16 +86,25 @@ export default function Home() {
       const activeUser = session?.user;
       if (!activeUser) return;
 
+      // FIXED: Added current_period_end to the selected database columns query string array block
       const [prof, sub, cars, logs, tokenRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', activeUser.id).maybeSingle(),
-        supabase.from('user_subscriptions').select('tier, status, current_period_start').eq('user_id', activeUser.id).eq('app_id', 'ecoroute').maybeSingle(),
+        supabase.from('user_subscriptions').select('tier, status, current_period_start, current_period_end').eq('user_id', activeUser.id).eq('app_id', 'ecoroute').maybeSingle(),
         supabase.from('ecoroute_vehicles').select('*').eq('user_id', activeUser.id).eq('is_active', true).order('created_at', { ascending: false }),
         supabase.from('ecoroute_emissions_logs').select('*').eq('user_id', activeUser.id).order('emission_date', { ascending: false }),
         supabase.from('ecoroute_corporate_api_tokens').select('*').eq('user_id', activeUser.id).maybeSingle()
       ]);
 
       setProfile(prof.data);
-      setSub(sub.data ? { tier: sub.data.tier, status: sub.data.status } : { tier: 'free', status: 'inactive' });
+
+      // FIXED: Safely mapped current_period_end parameter models object fields to fix the 0 days Left display bug
+      setSub(sub.data ? {
+        tier: sub.data.tier,
+        status: sub.data.status,
+        current_period_start: sub.data.current_period_start,
+        current_period_end: sub.data.current_period_end
+      } : { tier: 'free', status: 'inactive' });
+
       setCustomVehicles(cars.data || []);
       setRawLogsArray(logs.data || []);
 
@@ -164,7 +173,7 @@ export default function Home() {
   }
 
   // FIXED IS_PREMIUM VALIDATION ENGINE: Preserves active data states across cancelled renewal cutoff intervals
-  const isPremium = subscription.tier === 'premium' && (subscription.status === 'active' || subscription.status === 'cancelling');
+  const isPremium = subscription.tier === 'premium' && (subscription.status === 'active' || subscription.status === 'cancelling' || subscription.status === 'non-renewing' || subscription.status === 'non_renewing');
   const quotaReached = !isPremium && customVehicles.length >= 1;
 
   return (

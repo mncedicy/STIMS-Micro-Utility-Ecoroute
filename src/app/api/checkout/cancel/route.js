@@ -5,12 +5,14 @@ import { createClient } from '@supabase/supabase-js';
 
 // STIMS Dynamic Domain Whitelist Matrix Framework
 const ALLOWED_ORIGINS = [
-    'https://stims.co.za',     // Production Application Domain
-    'https://qa.stims.co.za',  // QA Staging Sandbox Subdomain
+    'https://stims.co.za',              // Production Corporate Domain
+    'https://qa.stims.co.za',           // General QA Sandbox Subdomain
+    'https://ecoroute.stims.co.za',     // App A Production Domain
+    'https://ecoroute-qa.stims.co.za',  // App A QA Sandbox Domain
     'http://localhost:3000',            // Local Development Engine Workspace
-    'http://localhost:3001',            // Local Development Engine Workspace
-    'http://127.0.0.1:3000',             // Alternative Local Address
-    'http://127.0.0.1:3001'             // Alternative Local Address
+    'http://localhost:3001',            // Local Development Engine Workspace alternative
+    'http://127.0.0.1:3000',            // Local IP Loopback address
+    'http://127.0.0.1:3001'             // Local IP Loopback alternative port
 ];
 
 function getCorsHeaders(req) {
@@ -117,7 +119,7 @@ export async function POST(req) {
 
         console.log(`📡 Relaying cancellation intent payload processing directly to Paystack API gateway for Code: ${paystackSubscriptionCode}`);
 
-        const paystackResponse = await fetch(process.env.PAYSTACK_CANCEL_URL || "https://paystack.co", {
+        const paystackResponse = await fetch(process.env.PAYSTACK_CANCEL_URL || "https://api.paystack.co/subscription/disable", {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,

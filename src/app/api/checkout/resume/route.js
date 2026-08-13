@@ -7,12 +7,14 @@ export const dynamic = 'force-dynamic';
 
 // STIMS Dynamic Domain Whitelist Matrix Framework
 const ALLOWED_ORIGINS = [
-    'https://stims.co.za',     // Production Application Domain
-    'https://qa.stims.co.za',  // QA Staging Sandbox Subdomain
+    'https://stims.co.za',              // Production Corporate Domain
+    'https://qa.stims.co.za',           // General QA Sandbox Subdomain
+    'https://ecoroute.stims.co.za',     // App A Production Domain
+    'https://ecoroute-qa.stims.co.za',  // App A QA Sandbox Domain
     'http://localhost:3000',            // Local Development Engine Workspace
-    'http://localhost:3001',            // Local Development Engine Workspace
-    'http://127.0.0.1:3000',             // Alternative Local Address
-    'http://127.0.0.1:3001'             // Alternative Local Address
+    'http://localhost:3001',            // Local Development Engine Workspace alternative
+    'http://127.0.0.1:3000',            // Local IP Loopback address
+    'http://127.0.0.1:3001'             // Local IP Loopback alternative port
 ];
 
 function getCorsHeaders(req) {
@@ -100,8 +102,8 @@ export async function POST(req) {
             return NextResponse.json({ error: "No active or resumable Paystack subscription code found." }, { status: 400, headers: corsHeaders });
         }
 
-        // 3. Hit Paystack's enable/resume endpoint
-        const paystackResponse = await fetch("https://paystack.co", {
+        // 3. Hit Paystack's enable/resume endpoint dynamically utilizing your override string parameter URL
+        const paystackResponse = await fetch(process.env.PAYSTACK_RESUME_URL || "https://api.paystack.co/subscription/enable", {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${secretKey.trim()}`,
