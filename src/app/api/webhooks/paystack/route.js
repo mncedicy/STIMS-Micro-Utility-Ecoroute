@@ -48,7 +48,7 @@ export async function POST(req) {
     const event = payload.event;
     const eventData = payload.data;
 
-    // FIXED SCOPE: Universally assigned to EcoRoute only
+    // UNIVERSALLY SIGNED TO ECOROUTE APPS
     const AppId = 'ecoroute';
     const email = eventData.customer?.email || eventData.subscription?.customer?.email;
 
@@ -80,8 +80,14 @@ export async function POST(req) {
         return NextResponse.json({ received: false, error: "Identity unresolvable" }, { status: 200 });
     }
 
+    // FIXED TOKEN EXTRACTOR: Looks inside child objects for valid token keys variations natively
     const resolvedSubscriptionCode = eventData.subscription_code || eventData.subscription?.subscription_code || null;
-    const resolvedEmailToken = eventData.email_token || eventData.subscription?.email_token || null;
+
+    const resolvedEmailToken = eventData.email_token ||
+        eventData.authorization?.email_token ||
+        eventData.subscription?.email_token ||
+        eventData.plan?.email_token ||
+        null;
 
     const json = {
         user_id: userId,
@@ -89,7 +95,7 @@ export async function POST(req) {
         event_type: event,
         paystack_reference: eventData.reference || null,
         paystack_subscription_code: resolvedSubscriptionCode,
-        paystack_pay_token: resolvedEmailToken, // Captured directly for safe resumes/disables
+        paystack_pay_token: resolvedEmailToken, // Injected token accurately here into ledger
         amount_cents: eventData.amount || eventData.subscription?.amount || 0,
         currency: eventData.currency || 'ZAR',
         payment_channel: eventData.channel || null,
