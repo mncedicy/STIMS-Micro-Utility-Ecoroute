@@ -4,7 +4,7 @@ import crypto from 'crypto';
 
 /**
  * HANDLER 1: Processes successful incoming merchant checkout credit card captures.
- * Sets user allocations state records to active and backfills subscription counters.
+ * Safe to arrive first or second.
  */
 export async function handleChargeSuccess(supabaseAdmin, eventData, userId, resolvedAppId) {
     const periodStart = eventData.paid_at || new Date().toISOString();
@@ -13,14 +13,13 @@ export async function handleChargeSuccess(supabaseAdmin, eventData, userId, reso
 
     const subscriptionCodeToken = eventData.subscription_code || eventData.subscription?.subscription_code || null;
 
-    // Deep resolution: Look for email token deeply nested inside authorization object parameter frames
     const realEmailToken = eventData.email_token ||
         eventData.authorization?.email_token ||
         eventData.subscription?.email_token ||
         eventData.plan?.email_token ||
         null;
 
-    // 1. Instantly log active licensing row metrics to the user subscriptions registry table
+    // 1. Idempotent upsert sync
     const { error: subUpsertError } = await supabaseAdmin
         .from('user_subscriptions')
         .upsert(
@@ -65,17 +64,18 @@ export async function handleChargeSuccess(supabaseAdmin, eventData, userId, reso
             current_monthly_usage: 0,
             usage_limit_cap: 3000,
             total_accrued_tax_liability_zar: existingTokenRecord?.total_accrued_tax_liability_zar || 0.00,
-            last_reset_period: periodStart.split('T'),
+            last_reset_period: periodStart.split('T')[0],
             is_active: true,
             updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
 
     if (tokenUpdateError) throw new Error(`Atomic token limit allocation upgrade dropped: ${tokenUpdateError.message}`);
-    console.log(`🎉 [Paystack Webhook Success]: Upgraded user ${userId} and allocated 3,000 requests capacity slots safely with token: ${realEmailToken}`);
+    console.log(`🎉 [Paystack Webhook Success]: Upgraded user ${userId} and allocated 3,000 requests capacity slots safely.`);
 }
 
 /**
  * HANDLER 2: Processes direct recurring subscription initialization events.
+ * FIXED: Converted from .update() to .upsert() to ensure absolute safety if this event arrives before charge.success
  */
 export async function handleSubscriptionCreate(supabaseAdmin, eventData, userId, resolvedAppId) {
     const realSubscriptionCode = (eventData.subscription_code || eventData.subscription?.subscription_code || "").trim();
@@ -87,29 +87,33 @@ export async function handleSubscriptionCreate(supabaseAdmin, eventData, userId,
         "").trim();
 
     const periodStart = eventData.created_at || new Date().toISOString();
+    const calculatedEnd = new Date(periodStart);
+    calculatedEnd.setDate(calculatedEnd.getDate() + 30);
 
     if (!realSubscriptionCode || !realSubscriptionCode.startsWith('SUB_')) {
         console.warn(`[Subscription Create Warning]: Received a non-standard initialization code frame context: "${realSubscriptionCode}". Bypassing hard crash.`);
     }
 
+    // FIXED FOR PRODUCTION: Uses upsert to handle cases where subscription.create lands first
     const { error } = await supabaseAdmin
         .from('user_subscriptions')
-        .update({
+        .upsert({
+            user_id: userId,
+            app_id: resolvedAppId,
             stripe_subscription_id: realSubscriptionCode || null,
             paystack_email_token: realEmailToken || null,
             stripe_customer_id: eventData.customer?.customer_code || null,
+            user_email: eventData.customer?.email || 'no-email-found@stims.co.za',
             status: 'active',
             tier: 'premium',
             current_period_start: periodStart,
-            current_period_end: eventData.next_payment_date || eventData.subscription?.next_payment_date,
+            current_period_end: eventData.next_payment_date || eventData.subscription?.next_payment_date || calculatedEnd.toISOString(),
             cancel_reason: "Subscription successfully mapped via programmatic billing webhook tracking cycles.",
             updated_at: new Date().toISOString()
-        })
-        .eq('user_id', userId)
-        .eq('app_id', resolvedAppId);
+        }, { onConflict: 'user_id,app_id' });
 
-    if (error) throw new Error(`Database subscription create update error: ${error.message}`);
-    console.log(`[Paystack Webhook Sync]: Verified subscription creation loop code: ${realSubscriptionCode}`);
+    if (error) throw new Error(`Database subscription create upsert error: ${error.message}`);
+    console.log(`[Paystack Webhook Sync]: Verified subscription creation loop code via upsert: ${realSubscriptionCode}`);
 }
 
 /**
