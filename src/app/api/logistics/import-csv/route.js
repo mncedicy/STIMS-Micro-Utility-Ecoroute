@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { parseCSVTextToJSON } from './csvTextEngine';
 import { processRowEntry } from './rowProcessor';
-import { dispatchCorporateWebhook } from '../../config/webhookDispatcher';
+import { dispatchCorporateWebhook } from '@/app/api/v1/config/webhookDispatcher';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
