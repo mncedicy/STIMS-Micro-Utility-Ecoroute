@@ -5,12 +5,13 @@ import { processCategoryEmissions } from './categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
-import { dispatchCorporateWebhook } from '../config/webhookDispatcher';
+import { dispatchCorporateWebhook } from '@/app/api/v1/config/webhookDispatcher';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
+
 
 export async function POST(req) {
     try {
