@@ -2,9 +2,18 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Global Carbon Tax constants for South African jurisdiction context
-export const CARBON_TAX_BASE_RATE_ZAR = 159.00; // ZAR per metric tonne CO2e
-export const STANDARD_FREE_ALLOWANCE_EXEMPTION = 0.60; // 60% basic allowance exemption
+// Add or adjust this export inside your apiConfig.js file:
+export const ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://ecoroute.stims.co.za',
+    'https://ecoroute-qa.stims.co.za',
+    process.env.NEXT_PUBLIC_APP_URL || '*'
+];
+
+// Ensure your existing helpers and constants remain exported:
+export const CARBON_TAX_BASE_RATE_ZAR = 190.00;
+export const STANDARD_FREE_ALLOWANCE_EXEMPTION = 0.60;
 
 // Simple in-memory storage fallback for rate limiting and response caching
 const rateLimitStore = new Map();
