@@ -5,6 +5,7 @@ import { processCategoryEmissions } from './categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
+import { dispatchCorporateWebhook } from '../config/webhookDispatcher';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -98,7 +99,6 @@ export async function POST(req) {
                 gas_unit: body.gas_unit || 'm3',
                 emission_date: resolvedEmissionDate,
                 cost_center: sanitizedCostCenter, // FIXED: Dynamic multi-branch parameter mapped natively
-
                 raw_payload: {
                     ...conversionsPayload,
                     metadata: {
@@ -131,7 +131,7 @@ export async function POST(req) {
         const nextUpdatedTaxLiabilityTotalZar = baselineAccruedTaxZar + incrementalTaxLiabilityZar;
 
         const nextUsageCountValue = currentUsageCount + 1;
-        const currentPeriodKey = tokenQuery.data?.last_reset_period || new Date().toISOString().split('T');
+        const currentPeriodKey = tokenQuery.data?.last_reset_period || new Date().toISOString().split('T')[0];
 
         const resolvedEnterpriseName = profRes.data?.company?.trim()
             ? profRes.data.company.trim()
@@ -156,6 +156,45 @@ export async function POST(req) {
             }, { onConflict: 'user_id' })
             .select()
             .single();
+
+        // --- ASYNCHRONOUS CORPORATE WEBHOOK NOTIFICATION DISPATCH ENGINES ---
+        try {
+            const usageCap = updatedTokenRecord?.usage_limit_cap || 100;
+            const updatedUsageRatio = nextUsageCountValue / usageCap;
+
+            // 1. Quota Exhaustion Warning webhook trigger (fires immediately at 95% usage limits)
+            if (updatedUsageRatio >= 0.95 && (currentUsageCount / usageCap) < 0.95) {
+                await dispatchCorporateWebhook(user.id, 'quota_exhaustion_warning', {
+                    threshold_reached: '95%',
+                    message: "Sent when your monthly request quota is running low (95% consumed), preventing sudden data integration blind spots.",
+                    current_usage: nextUsageCountValue,
+                    quota_limit: usageCap
+                });
+            }
+
+            // 2. Carbon Threshold Alert webhook trigger (fires immediately at 85% of standard budget cap limit)
+            const sustainabilityBudgetCapZar = 20000.00; // Custom corporate alert target checkpoint
+            if (nextUpdatedTaxLiabilityTotalZar >= (sustainabilityBudgetCapZar * 0.85) && baselineAccruedTaxZar < (sustainabilityBudgetCapZar * 0.85)) {
+                await dispatchCorporateWebhook(user.id, 'carbon_threshold_alert', {
+                    threshold_reached: '85%',
+                    message: "Triggered immediately when aggregate corporate monthly carbon emissions cross 85% of your configured sustainability budget cap.",
+                    accrued_tax_zar: parseFloat(nextUpdatedTaxLiabilityTotalZar.toFixed(2)),
+                    threshold_limit_zar: sustainabilityBudgetCapZar
+                });
+            }
+
+            // 3. Single Item Audit Calculation Saved callback event trigger
+            await dispatchCorporateWebhook(user.id, 'audit.saved', {
+                log_record_id: dbLogEntry.id,
+                category: cleanType.toUpperCase(),
+                carbon_kg: conversionsPayload.carbon_kg,
+                cost_center: sanitizedCostCenter,
+                emission_date: resolvedEmissionDate
+            });
+
+        } catch (webhookHookErr) {
+            console.warn('⚠️ [Webhook Dispatch Bypass]: Background pipeline delivery paused. Exception:', webhookHookErr.message);
+        }
 
         try {
             revalidatePath('/');

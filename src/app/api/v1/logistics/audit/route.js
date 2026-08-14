@@ -1,123 +1,153 @@
-// /src/app/api/v1/logistics/audit/route.js
-import { createClient } from '@supabase/supabase-js';
+// Updated API route handler with integrated real-time webhook checks
 import { processCategoryEmissions } from '../../../estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { revalidatePath } from 'next/cache';
 import { validateEmissionDate } from './apiValidationCore';
 import { sanitizeCategoryPayload } from './apiPayloadMatrix';
+import { dispatchCorporateWebhook } from '../../config/webhookDispatcher';
+import {
+    handlePreflightOptions,
+    authenticateAndValidateToken,
+    sendApiResponse
+} from '../../config/apiConfig';
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+export const dynamic = 'force-dynamic';
+
+export async function OPTIONS(req) {
+    return handlePreflightOptions(req);
+}
 
 export async function POST(req) {
+    const authValidation = await authenticateAndValidateToken(req, { checkQuota: true });
+    if (authValidation.errorResponse) return authValidation.errorResponse;
+
+    const { supabaseAdmin, tokenRecord, apiKeyToken, corsHeaders } = authValidation;
+
     try {
-        const authHeader = req.headers.get('authorization') || '';
-        if (!authHeader.startsWith('Bearer ')) {
-            return Response.json({ error: 'Authentication Failed: Missing or malformed Authorization Bearer header.' }, { status: 401 });
-        }
-        const apiKeyToken = authHeader.substring(7).trim();
-
-        // 1. Fetch token record independently of subscription state using the B2B key
-        const { data: tokenRecord, error: tokenError } = await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .select('*')
-            .eq('api_token', apiKeyToken)
-            .maybeSingle();
-
-        if (tokenError || !tokenRecord || !tokenRecord.is_active) {
-            return Response.json({ error: 'Authorization Denied: Provided access signature credentials are invalid.' }, { status: 403 });
-        }
-
-        const currentUsageCount = tokenRecord.current_monthly_usage || 0;
-        const capacityLimitBounds = tokenRecord.usage_limit_cap || 100;
-
-        if (currentUsageCount >= capacityLimitBounds) {
-            return Response.json({ error: `Quota Exceeded: Monthly transaction limits reached (${capacityLimitBounds} requests cap).` }, { status: 429 });
-        }
-
         let body;
         try { body = await req.json(); } catch {
-            return Response.json({ error: 'Bad Payload: Request body must be a valid JSON object.' }, { status: 400 });
+            return sendApiResponse(req, { error: 'Bad Payload: Request body must be a valid JSON object.' }, corsHeaders, 400);
         }
 
         if (!body.type) {
-            return Response.json({ error: 'Validation Error: Field property "type" is mandatory.' }, { status: 400 });
+            return sendApiResponse(req, { error: 'Validation Error: Field property "type" is mandatory.' }, corsHeaders, 400);
         }
 
         const cleanType = body.type.toLowerCase();
         const allowedCategories = ['vehicle', 'flight', 'shipping', 'electricity', 'gas'];
         if (!allowedCategories.includes(cleanType)) {
-            return Response.json({ error: `Validation Error: Unsupported category tier "${body.type}".` }, { status: 400 });
+            return sendApiResponse(req, { error: `Validation Error: Unsupported category tier "${body.type}".` }, corsHeaders, 400);
         }
 
         const inputEmissionDate = body.emission_date ? body.emission_date.toString().trim() : new Date().toISOString().split('T')[0];
         const dateValidationError = validateEmissionDate(inputEmissionDate);
         if (dateValidationError) {
-            return Response.json({ error: dateValidationError }, { status: 400 });
+            return sendApiResponse(req, { error: dateValidationError }, corsHeaders, 400);
         }
 
         const normalizedPayload = { ...body, emission_date: inputEmissionDate };
         const payloadValidationError = sanitizeCategoryPayload(cleanType, body, normalizedPayload);
         if (payloadValidationError) {
-            return Response.json({ error: payloadValidationError }, { status: 400 });
+            return sendApiResponse(req, { error: payloadValidationError }, corsHeaders, 400);
         }
 
-        // 2. Core Calculation Pipeline Execution
         const { calculatedKg, metadataLog } = await processCategoryEmissions(cleanType, normalizedPayload, apiKeyToken);
         const conversionsPayload = formatEmissionPayload(calculatedKg);
 
-        const shouldSaveToDatabase = body.save_log !== false;
+        const shouldSaveToDatabase = body.save_log === true;
+        const incomingReferenceId = body.reference_id ? String(body.reference_id).trim() : null;
+
         let createdLogRecordId = null;
+        let isDuplicateOverride = false;
 
         if (shouldSaveToDatabase) {
-            const { data: dbLogEntry, error: logError } = await supabaseAdmin
-                .from('ecoroute_emissions_logs')
-                .insert({
-                    user_id: tokenRecord.user_id,
-                    vehicle_id: cleanType === 'vehicle' ? normalizedPayload.vehicle_id : null,
-                    category_display: body.type.toUpperCase(),
-                    carbon_kg: conversionsPayload.carbon_kg,
-                    carbon_g: conversionsPayload.carbon_g,
-                    carbon_mt: conversionsPayload.carbon_mt,
-                    carbon_lb: conversionsPayload.carbon_lb,
+            if (incomingReferenceId) {
+                const { data: existingMatch } = await supabaseAdmin
+                    .from('ecoroute_emissions_logs')
+                    .select('id')
+                    .eq('user_id', tokenRecord.user_id)
+                    .eq('batch_manifest_row_id', incomingReferenceId)
+                    .maybeSingle();
 
-                    input_distance: ['vehicle', 'shipping'].includes(cleanType) ? parseFloat(normalizedPayload.distance) : null,
-                    input_unit: ['vehicle', 'shipping'].includes(cleanType) ? normalizedPayload.unit : null,
+                if (existingMatch) {
+                    isDuplicateOverride = true;
+                    createdLogRecordId = existingMatch.id;
+                }
+            }
 
-                    origin_iata: cleanType === 'flight' ? normalizedPayload.origin_iata.substring(0, 3).toUpperCase() : null,
-                    dest_iata: cleanType === 'flight' ? normalizedPayload.dest_iata.substring(0, 3).toUpperCase() : null,
+            if (!isDuplicateOverride) {
+                const { data: dbLogEntry, error: logError } = await supabaseAdmin
+                    .from('ecoroute_emissions_logs')
+                    .insert({
+                        user_id: tokenRecord.user_id,
+                        batch_manifest_row_id: incomingReferenceId,
+                        vehicle_id: cleanType === 'vehicle' ? normalizedPayload.vehicle_id : null,
+                        category_display: body.type.toUpperCase(),
+                        carbon_kg: conversionsPayload.carbon_kg,
+                        carbon_g: conversionsPayload.carbon_g,
+                        carbon_mt: conversionsPayload.carbon_mt,
+                        carbon_lb: conversionsPayload.carbon_lb,
+                        input_distance: ['vehicle', 'shipping'].includes(cleanType) ? parseFloat(normalizedPayload.distance) : null,
+                        input_unit: ['vehicle', 'shipping'].includes(cleanType) ? normalizedPayload.unit : null,
+                        origin_iata: cleanType === 'flight' ? normalizedPayload.origin_iata.substring(0, 3).toUpperCase() : null,
+                        dest_iata: cleanType === 'flight' ? normalizedPayload.dest_iata.substring(0, 3).toUpperCase() : null,
+                        passengers_count: cleanType === 'flight' ? parseInt(normalizedPayload.passengers, 10) : null,
+                        cargo_weight: cleanType === 'shipping' ? parseFloat(normalizedPayload.cargo_weight) : null,
+                        mass_unit: cleanType === 'shipping' ? normalizedPayload.mass_unit : null,
+                        energy_kwh: cleanType === 'electricity' ? parseFloat(normalizedPayload.kwh) : null,
+                        country_code: cleanType === 'electricity' ? normalizedPayload.country_code.toUpperCase() : null,
+                        gas_quantity: cleanType === 'gas' ? parseFloat(normalizedPayload.quantity) : null,
+                        gas_type: cleanType === 'gas' ? normalizedPayload.gas_type : null,
+                        gas_unit: cleanType === 'gas' ? normalizedPayload.gas_unit : null,
+                        emission_date: inputEmissionDate,
+                        log_source_channel: 'ENTERPRISE_API_TUNNEL',
+                        raw_payload: {
+                            ...conversionsPayload,
+                            metadata: { ...metadataLog, userAssignedDate: inputEmissionDate, processedViaSecureTunnel: true }
+                        }
+                    })
+                    .select().single();
 
-                    passengers_count: cleanType === 'flight' ? parseInt(normalizedPayload.passengers, 10) : null,
-                    cargo_weight: cleanType === 'shipping' ? parseFloat(normalizedPayload.cargo_weight) : null,
-                    mass_unit: cleanType === 'shipping' ? normalizedPayload.mass_unit : null,
-                    energy_kwh: cleanType === 'electricity' ? parseFloat(normalizedPayload.kwh) : null,
-                    country_code: cleanType === 'electricity' ? normalizedPayload.country_code.toUpperCase() : null,
-                    gas_quantity: cleanType === 'gas' ? parseFloat(normalizedPayload.quantity) : null,
-                    gas_type: cleanType === 'gas' ? normalizedPayload.gas_type : null,
-                    gas_unit: cleanType === 'gas' ? normalizedPayload.gas_unit : null,
-
-                    emission_date: inputEmissionDate,
-                    log_source_channel: 'ENTERPRISE_API_TUNNEL',
-                    raw_payload: {
-                        ...conversionsPayload,
-                        metadata: { ...metadataLog, userAssignedDate: inputEmissionDate, processedViaSecureTunnel: true }
-                    }
-                })
-                .select().single();
-
-            if (logError) throw logError;
-            createdLogRecordId = dbLogEntry.id;
+                if (logError) throw logError;
+                createdLogRecordId = dbLogEntry.id;
+            }
         }
 
-        // 3. Increment quota count
+        const currentUsageCount = tokenRecord.current_monthly_usage || 0;
+        const capacityLimitBounds = tokenRecord.usage_limit_cap || 100;
         const nextUsageCountValue = currentUsageCount + 1;
-        const { data: updatedTokenRecord } = await supabaseAdmin
+
+        await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({ current_monthly_usage: nextUsageCountValue, updated_at: new Date().toISOString() })
-            .eq('user_id', tokenRecord.user_id)
-            .select().single();
+            .eq('user_id', tokenRecord.user_id);
+
+        // --- ADDED WEBHOOK DISPATCH TRIGGERS (When saved to database successfully) ---
+        if (shouldSaveToDatabase && !isDuplicateOverride) {
+            const updatedUsageRatio = nextUsageCountValue / capacityLimitBounds;
+
+            // 1. Quota Exhaustion Warning (95% threshold)
+            if (updatedUsageRatio >= 0.95) {
+                await dispatchCorporateWebhook(tokenRecord.user_id, 'quota_exhaustion_warning', {
+                    threshold_reached: '95%',
+                    message: "Sent when your monthly request quota is running low (95% consumed), preventing sudden data integration blind spots.",
+                    current_usage: nextUsageCountValue,
+                    quota_limit: capacityLimitBounds
+                });
+            }
+
+            // 2. Carbon Threshold Alert (85% sustainability budget cap check)
+            const currentTaxLiabilityZar = parseFloat(tokenRecord.total_accrued_tax_liability_zar || 0) + (conversionsPayload.carbon_kg * 0.15); // example conversion factor
+            const budgetCapZar = 20000.00;
+            if (currentTaxLiabilityZar >= (budgetCapZar * 0.85)) {
+                await dispatchCorporateWebhook(tokenRecord.user_id, 'carbon_threshold_alert', {
+                    threshold_reached: '85%',
+                    message: "Triggered immediately when aggregate corporate monthly carbon emissions cross 85% of your configured sustainability budget cap.",
+                    accrued_tax_zar: currentTaxLiabilityZar,
+                    threshold_limit_zar: budgetCapZar
+                });
+            }
+        }
 
         try {
             revalidatePath('/');
@@ -126,19 +156,20 @@ export async function POST(req) {
             console.warn('[Cache Bypass]:', cacheErr.message);
         }
 
-        return Response.json({
+        return sendApiResponse(req, {
             success: true,
-            status: shouldSaveToDatabase ? 'TRANSACTION_AUDIT_VERIFIED' : 'CALCULATOR_ESTIMATE_ONLY',
+            status: shouldSaveToDatabase ? (isDuplicateOverride ? 'DUPLICATE_REFERENCE_SKIPPED' : 'TRANSACTION_AUDIT_VERIFIED') : 'CALCULATOR_ESTIMATE_ONLY',
             timestamp: new Date().toISOString(),
             organization: tokenRecord.organization_name,
             quota_requests_remaining: Math.max(0, capacityLimitBounds - nextUsageCountValue),
+            is_duplicate_override: isDuplicateOverride,
             metrics: conversionsPayload,
-            telemetry: { ...metadataLog, emissionDateApplied: inputEmissionDate, loggedToDatabase: shouldSaveToDatabase },
+            telemetry: { ...metadataLog, emissionDateApplied: inputEmissionDate, loggedToDatabase: shouldSaveToDatabase && !isDuplicateOverride },
             record: shouldSaveToDatabase ? { id: createdLogRecordId } : null
-        }, { status: 200 });
+        }, corsHeaders, 200);
 
     } catch (err) {
         console.error('[Enterprise API Tunnel Error]:', err);
-        return Response.json({ error: 'Internal pipeline calculation exception: ' + err.message }, { status: 500 });
+        return sendApiResponse(req, { error: 'Internal pipeline calculation exception: ' + err.message }, corsHeaders, 500);
     }
 }

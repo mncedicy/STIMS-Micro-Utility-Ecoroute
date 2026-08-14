@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { parseCSVTextToJSON } from './csvTextEngine';
 import { processRowEntry } from './rowProcessor';
+import { dispatchCorporateWebhook } from '../../config/webhookDispatcher';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -139,6 +140,39 @@ export async function POST(req) {
                     updated_at: new Date().toISOString()
                 })
                 .eq('user_id', user.id);
+
+            // --- INTEGRATED WEBHOOK DISPATCH TRIGGERS FOR BATCH UPLOADS ---
+            try {
+                // 1. Batch audit completion hook event
+                await dispatchCorporateWebhook(user.id, 'batch_audit_completed', {
+                    total_items_processed: rowsProcessedCount,
+                    total_items_skipped: skipErrorRowsCount,
+                    accrued_batch_tax_zar: parseFloat(batchAccruedTaxAccumulator.toFixed(2))
+                });
+
+                // 2. Quota exhaustion warning (95% threshold check)
+                if ((currentUsage / limitCap) >= 0.95) {
+                    await dispatchCorporateWebhook(user.id, 'quota_exhaustion_warning', {
+                        threshold_reached: '95%',
+                        message: "Sent when your monthly request quota is running low (95% consumed), preventing sudden data integration blind spots.",
+                        current_usage: currentUsage,
+                        quota_limit: limitCap
+                    });
+                }
+
+                // 3. Carbon threshold alert (85% sustainability budget cap check)
+                const sustainabilityCapZar = 20000.00;
+                if (totalUpdatedTaxLiabilityZar >= (sustainabilityCapZar * 0.85)) {
+                    await dispatchCorporateWebhook(user.id, 'carbon_threshold_alert', {
+                        threshold_reached: '85%',
+                        message: "Triggered immediately when aggregate corporate monthly carbon emissions cross 85% of your configured sustainability budget cap.",
+                        accrued_tax_zar: parseFloat(totalUpdatedTaxLiabilityZar.toFixed(2)),
+                        threshold_limit_zar: sustainabilityCapZar
+                    });
+                }
+            } catch (webhookErr) {
+                console.warn('⚠️ [CSV Webhook Notification Bypass]:', webhookErr.message);
+            }
         }
 
         return NextResponse.json({
