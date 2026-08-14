@@ -1,0 +1,8 @@
+{
+    "crons": [
+        {
+            "path": "/api/v1/cron/webhook-trigger",
+            "schedule": "0 0 * * *"
+        }
+    ]
+}

@@ -1,41 +1,85 @@
-// src/app/api/v1/cron/midnight-tax-sync/route.js
-
+// src/app/api/v1/cron/webhook-trigger/route.js
+import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { dispatchCorporateWebhook } from '../../config/webhookDispatcher';
 
 export const dynamic = 'force-dynamic';
 
+const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
+
 export async function GET(req) {
-    // Basic verification layer to ensure call matching secret environment keys string
-    const authHeader = req.headers.get('authorization') || '';
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET_SECURITY_KEY}`) {
-        return Response.json({ error: "Unauthorized cron execution attempt." }, { status: 401 });
+    // Secure authorization header verification for Vercel Cron
+    const authHeader = req.headers.get('authorization');
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        return NextResponse.json({ error: 'Unauthorized cron request execution.' }, { status: 401 });
     }
 
-    const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-        process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    );
-
     try {
-        // Fetch all active tokens tracking liability states across profiles
-        const { data: tokens } = await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .select('user_id, total_accrued_tax_liability_zar')
-            .eq('is_active', true);
+        console.log('🌙 [Midnight Cron Execution]: Starting daily billing period and usage reset evaluation...');
 
-        if (tokens) {
-            for (const token of tokens) {
-                // Dispatch real-time mid-night ZAR balance status pushes to each active user profile
-                await dispatchCorporateWebhook(token.user_id, 'tax_liability_updated', {
-                    calculation_period_close: new Date().toISOString().split('T')[0],
-                    accrued_tax_liability_zar: parseFloat(token.total_accrued_tax_liability_zar || 0)
-                });
+        const currentIsoDate = new Date().toISOString().split('T')[0];
+        const currentDayOfMonth = new Date().getDate();
+
+        // Run only on the 1st of every month to reset monthly usage metrics
+        if (currentDayOfMonth === 1) {
+            const { data: tokensToReset, error: fetchError } = await supabaseAdmin
+                .from('ecoroute_corporate_api_tokens')
+                .select('*')
+                .eq('is_active', true);
+
+            if (fetchError) throw fetchError;
+
+            let resetCount = 0;
+
+            if (tokensToReset && tokensToReset.length > 0) {
+                for (const tokenRecord of tokensToReset) {
+                    // Archive previous month usage or reset counters directly
+                    await supabaseAdmin
+                        .from('ecoroute_corporate_api_tokens')
+                        .update({
+                            current_monthly_usage: 0,
+                            last_reset_period: currentIsoDate,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', tokenRecord.id);
+
+                    // Dispatch midnight monthly reset confirmation event hook
+                    try {
+                        await dispatchCorporateWebhook(tokenRecord.user_id, 'automated_monthly_reset', {
+                            reset_date: currentIsoDate,
+                            previous_usage_cleared: tokenRecord.current_monthly_usage || 0,
+                            quota_limit: tokenRecord.usage_limit_cap || 100,
+                            message: "Your corporate monthly request volume has been successfully reset for the new billing cycle."
+                        });
+                    } catch (webhookErr) {
+                        console.warn(`⚠️ [Cron Webhook Fail for User ${tokenRecord.user_id}]:`, webhookErr.message);
+                    }
+
+                    resetCount++;
+                }
             }
+
+            console.log(`✅ [Midnight Cron Success]: Reset monthly quotas for ${resetCount} corporate accounts.`);
+            return NextResponse.json({
+                success: true,
+                action: 'MONTHLY_QUOTA_RESET_COMPLETED',
+                accounts_processed: resetCount,
+                timestamp: new Date().toISOString()
+            }, { status: 200 });
         }
 
-        return Response.json({ success: true, processed_profiles: tokens?.length || 0 });
+        return NextResponse.json({
+            success: true,
+            action: 'NO_ACTION_REQUIRED_MID_MONTH',
+            message: 'Cron triggered successfully. Monthly quota resets occur exclusively on the 1st day of each month.',
+            timestamp: new Date().toISOString()
+        }, { status: 200 });
+
     } catch (err) {
-        return Response.json({ error: err.message }, { status: 500 });
+        console.error('🚨 [Midnight Cron Execution Failure]:', err.message);
+        return NextResponse.json({ error: 'Internal cron processing error: ' + err.message }, { status: 500 });
     }
 }
