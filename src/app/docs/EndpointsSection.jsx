@@ -19,7 +19,7 @@ export default function EndpointsSection() {
                             <p className="text-xs text-slate-400 leading-relaxed">{ep.description}</p>
                         </div>
 
-                        {ep.downloads && ep.downloads.length > 0 && (
+                        {/* {ep.downloads && ep.downloads.length > 0 && (
                             <div className="flex flex-wrap gap-3 pt-1">
                                 {ep.downloads.map((dl, dIdx) => (
                                     <a
@@ -31,7 +31,7 @@ export default function EndpointsSection() {
                                     </a>
                                 ))}
                             </div>
-                        )}
+                        )} */}
 
                         <div className="space-y-1.5">
                             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">HTTP Headers</span>
