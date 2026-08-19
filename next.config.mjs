@@ -2,24 +2,23 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Revert global compilation rules back to stable dynamic execution baselines
-  cacheComponents: false,
-
-  // Maintain standard build and dynamic server path options
   reactStrictMode: true,
 
-  // FIXED SERVER ACTIONS SIZE CONSTRAINT: Raises limits from 1MB to 4MB for high-density PDFs
-  experimental: {
-    serverActions: {
-      bodySizeLimit: '4mb'
-    }
+  // TOP-LEVEL (Next.js 14.1+)
+  serverActions: {
+    bodySizeLimit: '10mb',
   },
 
-  // NEXT.JS 16 FIXED TURBOPACK REFERENCE:
-  // Configures compiler parameters using the correct top-level specification key
+  // EXPERIMENTAL FALLBACK (Next.js 13 - 14.0)
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
+  },
+
   turbopack: {
-    rules: {}
-  }
+    rules: {},
+  },
 };
 
 export default nextConfig;

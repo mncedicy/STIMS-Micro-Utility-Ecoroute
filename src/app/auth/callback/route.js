@@ -7,35 +7,44 @@ export async function GET(request) {
     const requestUrl = new URL(request.url);
     const code = requestUrl.searchParams.get('code');
 
-    if (code) {
-        const cookieStore = await cookies();
-
-        const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            {
-                cookies: {
-                    getAll() {
-                        return cookieStore.getAll();
-                    },
-                    setAll(cookiesToSet) {
-                        try {
-                            cookiesToSet.forEach(({ name, value, options }) =>
-                                cookieStore.set(name, value, options)
-                            );
-                        } catch {
-                            // The `setAll` method was called from a Server Component.
-                            // This can be ignored if you have middleware refreshing sessions.
-                        }
-                    },
-                },
-            }
-        );
-
-        // Exchange the confirmation code for an active session
-        await supabase.auth.exchangeCodeForSession(code);
+    if (!code) {
+        return NextResponse.redirect(`${requestUrl.origin}/?error=no_code_provided`);
     }
 
-    // Redirect user back to the sign-in page with a verification flag
-    return NextResponse.redirect(`${requestUrl.origin}/?verified=true`);
+    const cookieStore = await cookies();
+    let response = NextResponse.redirect(`${requestUrl.origin}/?login=success`);
+
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        {
+            cookies: {
+                getAll() {
+                    return cookieStore.getAll();
+                },
+                setAll(cookiesToSet) {
+                    try {
+                        cookiesToSet.forEach(({ name, value, options }) => {
+                            cookieStore.set(name, value, options);
+                            response.cookies.set(name, value, options);
+                        });
+                    } catch {
+                        // Ignore if called during static generation
+                    }
+                },
+            },
+            cookieOptions: {
+                name: 'stims-enterprise-sso',
+            },
+        }
+    );
+
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) {
+        console.error('Supabase OAuth Exchange Failure:', error.message);
+        return NextResponse.redirect(`${requestUrl.origin}/?error=${encodeURIComponent(error.message)}`);
+    }
+
+    return response;
 }

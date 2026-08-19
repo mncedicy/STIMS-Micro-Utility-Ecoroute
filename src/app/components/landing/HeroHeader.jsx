@@ -19,7 +19,6 @@ export default function HeroHeader({ onGetStartedClick, appMeta }) {
         if (!ref.current) return;
         const r = ref.current.getBoundingClientRect();
         setMotion(`translate(${(e.clientX - (r.left + r.width / 2)) / 30}px, ${(e.clientY - (r.top + r.height / 2)) / 30}px)`);
-        setGlow({ opacity: 1, left: `${e.clientX - r.left}px`, top: `${e.clientY - r.top}px` });
     };
 
 
