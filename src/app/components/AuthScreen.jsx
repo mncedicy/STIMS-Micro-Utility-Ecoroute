@@ -127,7 +127,12 @@ export default function AuthScreen() {
         setMessage({ text: '', success: false });
 
         try {
-            const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`,
+                },
+            });
             if (error) throw error;
         } catch (err) {
             setMessage({ text: err.message || 'Google Sign-In failed.', success: false });
