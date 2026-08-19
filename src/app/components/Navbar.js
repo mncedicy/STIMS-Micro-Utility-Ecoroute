@@ -45,13 +45,10 @@ export default function Navbar({ user, activeViewPage, onNavigateViewPage }) {
             <div className="max-w-6xl mx-auto h-full px-4 flex items-center justify-between">
 
                 <div className="flex items-center space-x-3">
-                    <a href="https://stims.co.za" onClick={handleLogoClick} className="flex items-center group shrink-0">
+                    <a href="#" onClick={handleGoHomeRoute} className="flex items-center group shrink-0">
                         <Image src="/logo.png" alt="STIMS Logo" width={70} height={70} className="object-contain" priority />
                     </a>
-                    <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
-                    <button type="button" onClick={handleGoHomeRoute} className="font-mono text-xs text-slate-600 hover:text-blue-500 cursor-pointer transition-colors bg-transparent border-none p-0 flex items-center space-x-3">
-                        <span className="text-blue-500 font-bold uppercase tracking-wider pl-0.5">EcoRoute</span>
-                    </button>
+
                 </div>
 
                 <div className="flex items-center space-x-4 relative" ref={dropdownRef}>

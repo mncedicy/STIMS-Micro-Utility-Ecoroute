@@ -1,4 +1,3 @@
-// /src/app/page.jsx
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -30,6 +29,7 @@ export default function Home() {
   const [activeViewPage, setActiveViewPage] = useState('dashboard');
   const [rawLogsArray, setRawLogsArray] = useState([]);
   const [showAuthGateModal, setShowAuthGateModal] = useState(false);
+  const [isVerifiedRedirect, setIsVerifiedRedirect] = useState(false);
 
   const [activeApplicationMeta, setActiveApplicationMeta] = useState({
     title: "EcoRoute",
@@ -42,6 +42,18 @@ export default function Home() {
     usage_limit_free: 100,
     usage_limit_premium: 3000
   });
+
+  // Automatically open AuthScreen when user redirects from email verification
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') === 'true') {
+      setIsVerifiedRedirect(true);
+      setShowAuthGateModal(true);
+
+      // Clean up parameter from URL bar without a page refresh
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const syncState = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -86,7 +98,6 @@ export default function Home() {
       const activeUser = session?.user;
       if (!activeUser) return;
 
-      // FIXED: Added current_period_end to the selected database columns query string array block
       const [prof, sub, cars, logs, tokenRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', activeUser.id).maybeSingle(),
         supabase.from('user_subscriptions').select('tier, status, current_period_start, current_period_end').eq('user_id', activeUser.id).eq('app_id', 'ecoroute').maybeSingle(),
@@ -97,7 +108,6 @@ export default function Home() {
 
       setProfile(prof.data);
 
-      // FIXED: Safely mapped current_period_end parameter models object fields to fix the 0 days Left display bug
       setSub(sub.data ? {
         tier: sub.data.tier,
         status: sub.data.status,
@@ -156,13 +166,13 @@ export default function Home() {
       <div className="min-h-screen w-full bg-[#020617] text-slate-100 antialiased relative flex flex-col justify-between selection:bg-blue-500 selection:text-slate-950">
         {!showAuthGateModal ? (
           <>
-            <LandingHero onGetStartedClick={() => setShowAuthGateModal(true)} appData={activeApplicationMeta} />
+            <LandingHero onGetStartedClick={() => setShowAuthGateModal(true)} appMeta={activeApplicationMeta} />
             <Contact user={null} profile={null} />
           </>
         ) : (
           <main className="w-full flex-grow flex items-center justify-center p-4 relative z-10 pt-16 animate-fade-in">
             <div className="w-full max-w-md relative space-y-4">
-              <AuthScreen onAuthSuccess={loadData} />
+              <AuthScreen onAuthSuccess={loadData} isVerifiedRedirect={isVerifiedRedirect} />
               <button type="button" onClick={() => setShowAuthGateModal(false)} className="w-full text-center text-slate-500 hover:text-slate-300 font-mono text-[10px] uppercase tracking-widest bg-transparent border-none outline-none py-1 cursor-pointer transition-colors">◀ return to landing overview</button>
             </div>
           </main>
@@ -172,7 +182,6 @@ export default function Home() {
     );
   }
 
-  // FIXED IS_PREMIUM VALIDATION ENGINE: Preserves active data states across cancelled renewal cutoff intervals
   const isPremium = subscription.tier === 'premium' && (subscription.status === 'active' || subscription.status === 'cancelling' || subscription.status === 'non-renewing' || subscription.status === 'non_renewing');
   const quotaReached = !isPremium && customVehicles.length >= 1;
 
