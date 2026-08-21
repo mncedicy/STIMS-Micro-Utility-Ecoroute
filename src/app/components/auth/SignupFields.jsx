@@ -1,8 +1,10 @@
+// src\app\components\auth\SignupFields.jsx
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import SearchableDropdownField from '../SearchableDropdownField';
+import SearchableDropdownField from '../shared/SearchableDropdownField';
 
 export default function SignupFields({
     email,

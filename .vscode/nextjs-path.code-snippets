@@ -1,0 +1,11 @@
+{
+    "Add Next.js Component Path Header": {
+        "scope": "javascript,typescript,javascriptreact,typescriptreact",
+        "prefix": "fpath",
+        "body": [
+            "// ${RELATIVE_FILEPATH}",
+            "$0"
+        ],
+        "description": "Inserts the relative file path as a comment header for Next.js files"
+    }
+}

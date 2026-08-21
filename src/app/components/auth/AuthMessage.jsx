@@ -1,3 +1,5 @@
+// src\app\components\auth\AuthMessage.jsx
+
 'use client';
 
 import React from 'react';

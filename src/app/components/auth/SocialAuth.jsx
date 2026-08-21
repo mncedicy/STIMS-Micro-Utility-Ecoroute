@@ -1,3 +1,5 @@
+// src\app\components\auth\SocialAuth.jsx
+
 'use client';
 
 import React from 'react';

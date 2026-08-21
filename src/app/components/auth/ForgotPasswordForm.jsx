@@ -1,3 +1,5 @@
+// src\app\components\auth\ForgotPasswordForm.jsx
+
 'use client';
 
 import React from 'react';
