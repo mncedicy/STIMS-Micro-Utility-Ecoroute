@@ -5,7 +5,8 @@ import { cookies, headers } from 'next/headers';
 /**
  * Core Vehicle Emissions Calculation Engine (Optimized for Fueleconomy.gov strict schema)
  */
-export async function calculateVehicleEmissions(vehicleId, distance, unit, tokenFallback = '') {
+// FIXED: Appended optional 'osrmContext' payload object to the function parameter footprint cleanly
+export async function calculateVehicleEmissions(vehicleId, distance, unit, tokenFallback = '', osrmContext = null) {
     // Next.js asynchronous server context initialization
     const cookieStore = await cookies();
     const headersList = await headers();
@@ -70,7 +71,12 @@ export async function calculateVehicleEmissions(vehicleId, distance, unit, token
         inputDistance: rawDistance,
         inputUnit: unit,
         distanceKm: parseFloat(distanceKm.toFixed(2)),
-        vehicleProfile: `${userVehicle.year} ${userVehicle.make} ${userVehicle.model}`
+        vehicleProfile: `${userVehicle.year} ${userVehicle.make} ${userVehicle.model}`,
+
+        // FIXED: Conditional merging layout assigns OSRM arrays down the UI stack pipeline safely
+        totalDurationSeconds: osrmContext?.totalDurationSeconds || 0,
+        tripLegsArray: osrmContext?.tripLegsArray || [],
+        waypointsArray: osrmContext?.waypointsArray || []
     };
 
     // 3. Fallback logic: check if a custom override modifier is active (not the default 0.23)

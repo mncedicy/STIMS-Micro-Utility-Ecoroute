@@ -18,6 +18,7 @@ export async function handleSpecialCategoryCalculations({ cleanType, body, userI
         const specs = routeResult.responsePayload?.vehicle_specs || {};
 
         const structuredRouteLog = {
+            id: 'route_matrix_direct',
             category_display: 'ROUTE CHECKER',
             carbon_kg: routeResult.actualCarbonKg,
             carbon_mt: (routeResult.actualCarbonKg / 1000).toFixed(4),
@@ -28,11 +29,14 @@ export async function handleSpecialCategoryCalculations({ cleanType, body, userI
             raw_payload: {
                 metadata: {
                     sequencePoints: body.coordinates_string.length,
-                    routing_engine: 'Haversine Matrix',
+                    routing_engine: 'Haversine Matrix snapped via OSRM Engine',
                     projectedFuelLitres: payload.projected_fuel_litres || (routeResult.actualDistanceKm * 0.115).toFixed(2),
                     vehicleDescription: specs.description || 'Fleet Asset Truck',
                     carbonMultiplierApplied: specs.carbon_multiplier || 0.230,
-                    coordinatesArray: body.coordinates_string
+                    coordinatesArray: body.coordinates_string,
+                    totalDurationSeconds: body.osrm_total_duration || 0,
+                    tripLegsArray: body.osrm_legs_data || [],
+                    waypointsArray: body.osrm_waypoints_data || []
                 }
             }
         };
@@ -49,6 +53,7 @@ export async function handleSpecialCategoryCalculations({ cleanType, body, userI
         }
 
         const structuredTaxLog = {
+            id: 'tax_ledger_direct',
             category_display: 'CARBON TAX REPORT',
             carbon_kg: 1680.00,
             carbon_mt: 1.6800,

@@ -1,8 +1,9 @@
 // src/app/utils/ecoroute/useEcoRouteData.js
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { calculateEstimate } from './ecorouteHelpers';
 
 export function useEcoRouteData() {
     const [user, setUser] = useState(null);
@@ -11,7 +12,7 @@ export function useEcoRouteData() {
     const [customVehicles, setCustomVehicles] = useState([]);
     const [selectedCustomVehicle, setSelectedCustomVehicle] = useState('');
     const [isFleetModalOpen, setIsFleetModalOpen] = useState(false);
-    const [distance, setDistance] = useState(100);
+    const [distance, setDistance] = useState('');
     const [unit, setUnit] = useState('km');
     const [estimate, setEstimate] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -21,149 +22,53 @@ export function useEcoRouteData() {
     const [rawLogsArray, setRawLogsArray] = useState([]);
     const [showAuthGateModal, setShowAuthGateModal] = useState(false);
     const [isVerifiedRedirect, setIsVerifiedRedirect] = useState(false);
+    const [activeApplicationMeta, setActiveApplicationMeta] = useState(null);
+    const [tokenRecord, setTokenRecord] = useState(null);
 
-    // Keep a reference to current estimate to avoid re-triggering loadData on state changes
-    const estimateRef = useRef(estimate);
+    // Keep an active reference pointer to prevent rendering loop race conditions across async context fetches
+    const selectedVehicleRef = useRef('');
     useEffect(() => {
-        estimateRef.current = estimate;
-    }, [estimate]);
-
-    const [activeApplicationMeta, setActiveApplicationMeta] = useState({
-        title: 'EcoRoute',
-        tagline: 'FLEET CARBON ANALYTICS',
-        category: 'LOGISTICS',
-        description:
-            'Automated mileage-to-emissions translation engine built specifically for independent local courier services seeking green compliance tax credits.',
-        app_link: 'https://ecoroute.stims.co.za',
-        monetization_type: 'Subscription',
-        monetization_fee_display: 'R280 per month',
-        usage_limit_free: 100,
-        usage_limit_premium: 3000,
-    });
-
-    // Automatically open AuthScreen when user redirects from email verification
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('verified') === 'true') {
-            setIsVerifiedRedirect(true);
-            setShowAuthGateModal(true);
-
-            // Clean up parameter from URL bar without a page refresh
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-    }, []);
-
-    const syncState = useCallback(async () => {
-        const {
-            data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.user) {
-            setUser(session.user);
-        } else {
-            setUser(null);
-            setLoading(false);
-        }
-    }, []);
+        selectedVehicleRef.current = selectedCustomVehicle;
+    }, [selectedCustomVehicle]);
 
     useEffect(() => {
-        syncState();
-        const {
-            data: { subscription: authSub },
-        } = supabase.auth.onAuthStateChange((_, s) => {
-            if (s?.user) {
-                setUser(s.user);
-            } else {
-                setUser(null);
-                setLoading(false);
-            }
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUser(session?.user || null);
         });
-        window.addEventListener('focus', syncState);
-        return () => {
-            authSub?.unsubscribe();
-            window.removeEventListener('focus', syncState);
-        };
-    }, [syncState]);
 
+        const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setUser(session?.user || null);
+        });
+
+        return () => authListener.unsubscribe();
+    }, []);
+
+    // FIXED DEPENDENCY BLOCK: Removed 'selectedCustomVehicle' to stop recursive memoization breaks
     const loadData = useCallback(
         async (isRefreshOnly = false) => {
+            if (!user?.id) return;
+            if (!isRefreshOnly) setLoading(true);
             try {
-                const { data: appMetaRow } = await supabase
-                    .from('applications')
-                    .select('*')
-                    .eq('app_id', 'ecoroute')
-                    .maybeSingle();
-
-                if (appMetaRow) {
-                    setActiveApplicationMeta(appMetaRow);
-                }
-
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const activeUser = session?.user;
-                if (!activeUser) return;
-
-                const [prof, sub, cars, logs, tokenRes] = await Promise.all([
-                    supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', activeUser.id)
-                        .maybeSingle(),
-                    supabase
-                        .from('user_subscriptions')
-                        .select(
-                            'tier, status, current_period_start, current_period_end'
-                        )
-                        .eq('user_id', activeUser.id)
-                        .eq('app_id', 'ecoroute')
-                        .maybeSingle(),
-                    supabase
-                        .from('ecoroute_vehicles')
-                        .select('*')
-                        .eq('user_id', activeUser.id)
-                        .eq('is_active', true)
-                        .order('created_at', { ascending: false }),
-                    supabase
-                        .from('ecoroute_emissions_logs')
-                        .select('*')
-                        .eq('user_id', activeUser.id)
-                        .order('emission_date', { ascending: false }),
-                    supabase
-                        .from('ecoroute_corporate_api_tokens')
-                        .select('*')
-                        .eq('user_id', activeUser.id)
-                        .maybeSingle(),
+                const [cars, logs, sub, tokenRes, prof] = await Promise.all([
+                    supabase.from('ecoroute_vehicles').select('*').eq('user_id', user.id).eq('is_active', true).order('created_at', { ascending: false }),
+                    supabase.from('ecoroute_emissions_logs').select('*').eq('user_id', user.id).order('emission_date', { ascending: false }).order('created_at', { ascending: false }),
+                    supabase.from('user_subscriptions').select('tier, status, current_period_start, current_period_end').eq('user_id', user.id).eq('app_id', 'ecoroute').maybeSingle(),
+                    supabase.from('ecoroute_corporate_api_tokens').select('*').eq('user_id', user.id).maybeSingle(),
+                    supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
                 ]);
 
                 setProfile(prof.data);
-
-                setSub(
-                    sub.data
-                        ? {
-                            tier: sub.data.tier,
-                            status: sub.data.status,
-                            current_period_start: sub.data.current_period_start,
-                            current_period_end: sub.data.current_period_end,
-                        }
-                        : { tier: 'free', status: 'inactive' }
-                );
-
+                setSub(sub.data ? { tier: sub.data.tier, status: sub.data.status, current_period_start: sub.data.current_period_start, current_period_end: sub.data.current_period_end } : { tier: 'free', status: 'inactive' });
                 setCustomVehicles(cars.data || []);
                 setRawLogsArray(logs.data || []);
 
-                const currentEstimate = estimateRef.current;
-                if (!isRefreshOnly && tokenRes.data) {
-                    setEstimate({
-                        category_display: 'INITIALIZATION',
-                        tokenRecord: tokenRes.data,
-                    });
-                } else if (
-                    isRefreshOnly &&
-                    tokenRes.data &&
-                    currentEstimate &&
-                    currentEstimate.category_display !== 'INITIALIZATION'
-                ) {
-                    setEstimate((prev) => ({ ...prev, tokenRecord: tokenRes.data }));
+                if (tokenRes.data) {
+                    setTokenRecord(tokenRes.data);
+                }
+
+                // FIXED CONDITION: Uses our non-reactive useRef pointer to assign the truck fallback value safely without re-triggering loadData
+                if (cars.data?.length > 0 && !selectedVehicleRef.current) {
+                    setSelectedCustomVehicle(cars.data[0].id);
                 }
             } catch (err) {
                 console.error('EcoRoute core data load exception:', err);
@@ -171,7 +76,7 @@ export function useEcoRouteData() {
                 setLoading(false);
             }
         },
-        [] // Stable dependency array stops continuous refreshing
+        [user?.id] // Stable hook signature array bounds
     );
 
     useEffect(() => {
@@ -182,8 +87,30 @@ export function useEcoRouteData() {
         setCalcLoading(true);
         setErrorMsg('');
         try {
-            const data = await calculateEstimate(formPayload);
-            setEstimate(data);
+            const { data: session } = await supabase.auth.getSession();
+            const token = session?.session?.access_token || '';
+
+            const res = await fetch('/api/estimates', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(formPayload)
+            });
+
+            const result = await res.json();
+            if (!res.ok || result.error) {
+                throw new Error(result.error || 'Server calculation fault.');
+            }
+
+            const nextData = result.data || result;
+            setEstimate(nextData);
+
+            if (nextData?.tokenRecord) {
+                setTokenRecord(nextData.tokenRecord);
+            }
+
             await loadData(true);
         } catch (err) {
             setErrorMsg(err.message || 'Processing parameter metrics failed.');
@@ -192,42 +119,15 @@ export function useEcoRouteData() {
         }
     }
 
-    const isPremium =
-        subscription.tier === 'premium' &&
-        (subscription.status === 'active' ||
-            subscription.status === 'cancelling' ||
-            subscription.status === 'non-renewing' ||
-            subscription.status === 'non_renewing');
-
+    const isPremium = subscription.tier === 'premium' && ['active', 'cancelling', 'non-renewing', 'non_renewing'].includes(subscription.status);
     const quotaReached = !isPremium && customVehicles.length >= 1;
 
     return {
-        user,
-        profile,
-        subscription,
-        customVehicles,
-        selectedCustomVehicle,
-        setSelectedCustomVehicle,
-        isFleetModalOpen,
-        setIsFleetModalOpen,
-        distance,
-        setDistance,
-        unit,
-        setUnit,
-        estimate,
-        loading,
-        calcLoading,
-        errorMsg,
-        activeViewPage,
-        setActiveViewPage,
-        rawLogsArray,
-        showAuthGateModal,
-        setShowAuthGateModal,
-        isVerifiedRedirect,
-        activeApplicationMeta,
-        loadData,
-        handleCalculate,
-        isPremium,
-        quotaReached,
+        user, profile, subscription, customVehicles, selectedCustomVehicle, setSelectedCustomVehicle,
+        isFleetModalOpen, setIsFleetModalOpen, distance, setDistance, unit, setUnit,
+        estimate: estimate ? { ...estimate, tokenRecord: tokenRecord || estimate.tokenRecord } : (tokenRecord ? { tokenRecord } : null),
+        loading, calcLoading, errorMsg, activeViewPage, setActiveViewPage, rawLogsArray,
+        showAuthGateModal, setShowAuthGateModal, isVerifiedRedirect, activeApplicationMeta,
+        loadData, handleCalculate, isPremium, quotaReached,
     };
 }

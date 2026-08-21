@@ -2,14 +2,12 @@
 
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// FIXED LEAFLET MARKER RESOLUTION: Matches exact 1.9.4 footprint to bypass Next.js image loading faults
 delete L.Icon.Default.prototype._getIconUrl;
-
 L.Icon.Default.mergeOptions({
     iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
     iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -17,79 +15,77 @@ L.Icon.Default.mergeOptions({
 });
 
 function MapEventsHandler({ onMapClick }) {
-    useMapEvents({
-        click(e) {
-            onMapClick(e.latlng);
-        },
-    });
+    useMapEvents({ click(e) { onMapClick(e.latlng); } });
     return null;
 }
 
-export default function MapCoordinatePicker({ coordinates, onCoordinatesChange }) {
-    const defaultCenter = [-26.02, 28.22]; // Defaulting to South Africa region baseline bounds
+export default function MapCoordinatePicker({ coordinates, onCoordinatesChange, setOsrmTotalDuration, setOsrmLegsData, setOsrmWaypointsData }) {
+    const defaultCenter = [-26.02, 28.22];
+    const [roadGeometry, setRoadGeometry] = useState([]);
+    const [loadingRoute, setLoadingRoute] = useState(false);
 
-    const handleMapClick = (latlng) => {
-        if (!latlng || typeof latlng.lat !== 'number' || typeof latlng.lng !== 'number') return;
-        const coordinateString = `${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`;
-        onCoordinatesChange([...coordinates, coordinateString]);
-    };
-
-    const clearPoints = () => {
-        onCoordinatesChange([]);
-    };
-
-    // FIXED PARSING MATRIX: Explicitly selects index offsets and to pull numerical values cleanly
-    const polylinePositions = (Array.isArray(coordinates) ? coordinates : [])
+    const markerPositions = (Array.isArray(coordinates) ? coordinates : [])
         .map(coord => {
             if (!coord || typeof coord !== 'string' || !coord.includes(',')) return null;
             const parts = coord.split(',');
-            const lat = parseFloat(parts[0]); // FIXED: Reads array index position 0 safely
-            const lon = parseFloat(parts[1]); // FIXED: Reads array index position 1 safely
-            return (!isNaN(lat) && !isNaN(lon)) ? [lat, lon] : null;
+            return [parseFloat(parts[0]), parseFloat(parts[1])];
         })
-        .filter(pos => pos !== null); // Discards malformed node metrics instantly
+        .filter(pos => pos !== null && !isNaN(pos[0]) && !isNaN(pos[1]));
+
+    useEffect(() => {
+        if (markerPositions.length < 2) {
+            setRoadGeometry([]);
+            if (setOsrmTotalDuration) setOsrmTotalDuration(0);
+            if (setOsrmLegsData) setOsrmLegsData([]);
+            if (setOsrmWaypointsData) setOsrmWaypointsData([]);
+            return;
+        }
+
+        const fetchSequentialOsrmRoute = async () => {
+            setLoadingRoute(true);
+            try {
+                const coordinateStringParam = markerPositions.map(pos => `${pos[1]},${pos[0]}`).join(';');
+                const url = `https://router.project-osrm.org/route/v1/driving/${coordinateStringParam}?overview=full&geometries=geojson`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data.code === 'Ok' && data.routes?.[0]) {
+                    const route = data.routes[0];
+                    setRoadGeometry(route.geometry.coordinates.map(coord => [coord[1], coord[0]]));
+
+                    // FIXED: Forwarding metrics back upwards to parent form container
+                    if (setOsrmTotalDuration) setOsrmTotalDuration(route.duration);
+                    if (setOsrmLegsData) setOsrmLegsData(route.legs || []);
+                    if (setOsrmWaypointsData) setOsrmWaypointsData(data.waypoints || []);
+                }
+            } catch (err) {
+                console.error('[Map Tracker OSRM Matrix Exception]:', err);
+            } finally {
+                setLoadingRoute(false);
+            }
+        };
+
+        fetchSequentialOsrmRoute();
+    }, [coordinates]);
+
+    const handleMapClick = (latlng) => {
+        if (!latlng || typeof latlng.lat !== 'number' || typeof latlng.lng !== 'number') return;
+        onCoordinatesChange([...coordinates, `${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`]);
+    };
 
     return (
         <div className="space-y-2 mt-2 font-mono text-xs">
-            <div className="flex justify-between items-center">
-                <span className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">
-                    Interactive Sequence Route Builder ({polylinePositions.length} Points Selected)
-                </span>
-                {polylinePositions.length > 0 && (
-                    <button
-                        type="button"
-                        onClick={clearPoints}
-                        className="text-rose-400 hover:text-rose-300 text-[10px] uppercase font-bold cursor-pointer"
-                    >
-                        [ Clear Path ]
-                    </button>
-                )}
-            </div>
-
+            <span className="text-slate-400 text-[10px] uppercase tracking-wider font-bold h-5 flex items-center">
+                {loadingRoute ? <span className="text-blue-400 animate-pulse">⚡ SNAP-ROUTING SYSTEM TO ROAD NETWORKS...</span> : `Interactive Sequence Route Builder (${markerPositions.length} Points Mapped)`}
+            </span>
             <div className="h-64 w-full bg-slate-950 border border-slate-800 rounded-lg overflow-hidden relative z-0">
-                <MapContainer
-                    center={defaultCenter} // FIXED: Pins map center context, preventing cursor drift movement jumps
-                    zoom={11}
-                    style={{ height: '100%', width: '100%' }}
-                >
-                    <TileLayer
-                        attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
+                <MapContainer center={defaultCenter} zoom={11} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     <MapEventsHandler onMapClick={handleMapClick} />
-
-                    {polylinePositions.map((pos, idx) => (
-                        <Marker key={idx} position={pos} />
-                    ))}
-
-                    {polylinePositions.length > 1 && (
-                        <Polyline positions={polylinePositions} color="#2563eb" weight={3} dashArray="5, 10" />
-                    )}
+                    {markerPositions.map((pos, idx) => <Marker key={idx} position={pos} />)}
+                    {roadGeometry.length > 0 && <Polyline positions={roadGeometry} color="#2563eb" weight={3} opacity={0.85} />}
                 </MapContainer>
             </div>
-            <p className="text-[10px] text-slate-500 italic">
-                💡 Click directly on the map surface panel above sequentially to plot logistics waypoint paths.
-            </p>
         </div>
     );
 }

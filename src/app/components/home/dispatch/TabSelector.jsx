@@ -5,6 +5,7 @@
 import React from 'react';
 
 export default function TabSelector({ activeTab, setActiveTab, setOpenDropdownKey }) {
+    // Array tokens map directly to your 7 clean system operational tabs
     const tabs = ['vehicle', 'shipping', 'flight', 'electricity', 'gas', 'route', 'tax'];
 
     return (
@@ -15,7 +16,7 @@ export default function TabSelector({ activeTab, setActiveTab, setOpenDropdownKe
                     type="button"
                     onClick={() => {
                         setActiveTab(tab);
-                        setOpenDropdownKey(null); // Dismiss open fields across tab changes cleanly
+                        if (setOpenDropdownKey) setOpenDropdownKey(null);
                     }}
                     className={`text-center py-1.5 rounded-md uppercase tracking-wider transition-colors cursor-pointer w-full text-ellipsis overflow-hidden ${activeTab === tab
                         ? 'bg-blue-600 text-white font-bold shadow-[0_0_15px_rgba(59,130,246,0.3)]'

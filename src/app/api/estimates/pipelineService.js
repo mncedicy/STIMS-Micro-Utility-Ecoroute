@@ -9,9 +9,6 @@ const supabaseAdmin = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-/**
- * Handles backend ledger records logging, tax evaluations, token upserts, and webhooks.
- */
 export async function runEmissionsPipeline({ user, cleanType, body, conversionsPayload, metadataLog, appMetaRes, tokenQuery, profRes, currentUsageCount }) {
     const resolvedEmissionDate = body.emission_date && /^\d{4}-\d{2}-\d{2}$/.test(body.emission_date)
         ? body.emission_date
@@ -20,6 +17,16 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
     const sanitizedCostCenter = body.cost_center && body.cost_center.toString().trim() !== ''
         ? body.cost_center.toString().trim().substring(0, 100)
         : 'Unassigned';
+
+    // FIXED: Appends captured OSRM road geometry metrics into your standard saved database log entry payload structures
+    const finalMetadataBlock = {
+        ...metadataLog,
+        userAssignedDate: resolvedEmissionDate,
+        costCenterAssigned: sanitizedCostCenter,
+        totalDurationSeconds: body.osrm_total_duration || 0,
+        tripLegsArray: body.osrm_legs_data || [],
+        waypointsArray: body.osrm_waypoints_data || []
+    };
 
     // 1. Write transactional log
     const { data: dbLogEntry, error: dbWriteError } = await supabaseAdmin
@@ -48,7 +55,7 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
             cost_center: sanitizedCostCenter,
             raw_payload: {
                 ...conversionsPayload,
-                metadata: { ...metadataLog, userAssignedDate: resolvedEmissionDate, costCenterAssigned: sanitizedCostCenter },
+                metadata: finalMetadataBlock,
                 global_flight_route: cleanType === 'flight' ? { origin_name_full: body.origin_iata, destination_name_full: body.dest_iata } : null
             }
         })

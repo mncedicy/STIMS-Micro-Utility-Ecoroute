@@ -24,13 +24,11 @@ export async function POST(req) {
 
         const cleanType = body.type.toLowerCase();
 
-        // 1. CHOP-OFF LAYER: If 'route' or 'tax', this block will evaluate and return immediately
         const interceptionResult = await handleSpecialCategoryCalculations({ cleanType, body, userId: user.id });
         if (interceptionResult.intercepted) {
             return interceptionResult.response;
         }
 
-        // Standard emission log pipelines execute below, completely untouched by Route or Tax categories
         const [appMetaRes, subRes, tokenQuery, profRes] = await Promise.all([
             supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle(),
             supabaseAdmin.from('user_subscriptions').select('tier, status').eq('user_id', user.id).eq('app_id', 'ecoroute').maybeSingle(),
@@ -47,11 +45,20 @@ export async function POST(req) {
         const conversionsPayload = formatEmissionPayload(calculatedKg);
 
         const responseData = await runEmissionsPipeline({
-            user, cleanType, body, conversionsPayload, metadataLog, appMetaRes, tokenQuery, profRes, currentUsageCount
+            user,
+            cleanType,
+            body,
+            conversionsPayload,
+            metadataLog,
+            appMetaRes,
+            tokenQuery,
+            profRes,
+            currentUsageCount
         });
 
         return NextResponse.json({ success: true, data: responseData }, { status: 200 });
     } catch (error) {
+        console.error("🚨 EcoRoute API Orchestrator Crash:", error.message);
         return NextResponse.json({ error: error.message || "Internal server computation failure." }, { status: 500 });
     }
 }
