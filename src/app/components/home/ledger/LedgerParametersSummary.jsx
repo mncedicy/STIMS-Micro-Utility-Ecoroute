@@ -16,10 +16,29 @@ export default function LedgerParametersSummary({ log }) {
 
     const formatDurationDisplayString = (secondsCount) => {
         if (!secondsCount || isNaN(secondsCount)) return '0s';
+
         const mins = Math.floor(secondsCount / 60);
+        const hrs = Math.floor(mins / 60);
+
+        // Tier 1: 24 Hours or more -> Format as Days + Hours
+        if (hrs >= 24) {
+            const days = Math.floor(hrs / 24);
+            const remainingHrs = hrs % 24;
+            return remainingHrs > 0 ? `${days}d ${remainingHrs}h` : `${days}d`;
+        }
+
+        // Tier 2: 60 Minutes to 23 Hours -> Format as Hours + Minutes
+        if (mins >= 60) {
+            const remainingMins = mins % 60;
+            return remainingMins > 0 ? `${hrs}h ${remainingMins}m` : `${hrs}h`;
+        }
+
+        // Tier 3: Less than an hour -> Format as Minutes + Seconds
         const secs = Math.floor(secondsCount % 60);
         return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
     };
+
+
 
     const renderSequentialTripLegsMatrix = (legsArray, waypointsArray) => {
         if (!Array.isArray(legsArray) || legsArray.length === 0) return null;

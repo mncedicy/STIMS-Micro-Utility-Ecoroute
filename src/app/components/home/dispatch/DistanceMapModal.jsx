@@ -84,7 +84,7 @@ export default function DistanceMapModal({ onClose, onSelectDistance }) {
             <div className="w-full max-w-6xl h-full mr-3 max-h-[100vh] bg-[#090d22] border border-blue-900/60 rounded-xl p-5 shadow-2xl relative z-10 animate-fade-in flex flex-col space-y-4 text-left stims-hover-glow">
 
                 {/* Header Block */}
-                <div className="border-b border-slate-900 pb-3 flex-shrink-0">
+                <div className="border-b border-slate-900 pb-0 flex-shrink-0">
                     <span className="text-blue-400 font-black tracking-wider text-[10px] uppercase block mb-1">
                         🗺️ REAL DRIVING DISTANCE ROUTING CALCULATOR (OSRM)
                     </span>

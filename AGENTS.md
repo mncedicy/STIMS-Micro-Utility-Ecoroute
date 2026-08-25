@@ -3,12 +3,12 @@
 # EcoRoute Architecture & Agents Blueprint
 
 ## System Overview
-EcoRoute (`ecoroute.stims.co.za`) is a real-time logistics carbon emissions tracking application. It integrates with a local Mock Carbon Interface API server to process fleet travel records and persist data using Supabase.
+EcoRoute (`ecoroute.stims.co.za`) is a real-time logistics carbon emissions tracking application. It integrates with a local Mock Carbon Interface API server to process fleet travel records and persist data using Supabase, vercel, paystack,leaflet, https://router.project-osrm.org.
 
 ## Tech Stack
 - **Framework**: Next.js (App Router, JavaScript)
 - **Styling**: Tailwind CSS v4 (CSS-First Layer Configuration)
-- **Mock Service**: Standalone Express Node.js App (Running on port 4000)
+- **Mock Service**: Standalone Express Node.js App 
 - **Database Layer**: Supabase Cache Storage
 
 ## Core Environment Setup
