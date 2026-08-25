@@ -31,13 +31,27 @@ export function useEcoRouteData() {
         selectedVehicleRef.current = selectedCustomVehicle;
     }, [selectedCustomVehicle]);
 
+    // Initial session loading controller pipeline
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(({ data: { session }, error }) => {
+            if (error) {
+                console.error("[EcoRoute Session Lookup Error]:", error);
+                setLoading(false);
+                return;
+            }
             setUser(session?.user || null);
+            // CRITICAL PATCH: If no session exists at initialization, lift the gate immediately
+            if (!session) {
+                setLoading(false);
+            }
         });
 
         const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange((_event, session) => {
             setUser(session?.user || null);
+            // CRITICAL PATCH: If user signs out or has no session, unlock loading state
+            if (!session) {
+                setLoading(false);
+            }
         });
 
         return () => authListener.unsubscribe();
@@ -46,7 +60,12 @@ export function useEcoRouteData() {
     // FIXED DEPENDENCY BLOCK: Removed 'selectedCustomVehicle' to stop recursive memoization breaks
     const loadData = useCallback(
         async (isRefreshOnly = false) => {
-            if (!user?.id) return;
+            // CRITICAL PATCH: If data fetching fires without a session ID, release loading state to break out of the infinite screen hang
+            if (!user?.id) {
+                setLoading(false);
+                return;
+            }
+
             if (!isRefreshOnly) setLoading(true);
             try {
                 const [cars, logs, sub, tokenRes, prof] = await Promise.all([
@@ -57,22 +76,24 @@ export function useEcoRouteData() {
                     supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
                 ]);
 
-                setProfile(prof.data);
-                setSub(sub.data ? { tier: sub.data.tier, status: sub.data.status, current_period_start: sub.data.current_period_start, current_period_end: sub.data.current_period_end } : { tier: 'free', status: 'inactive' });
-                setCustomVehicles(cars.data || []);
-                setRawLogsArray(logs.data || []);
+                setProfile(prof?.data || null);
+                setSub(sub?.data ? { tier: sub.data.tier, status: sub.data.status, current_period_start: sub.data.current_period_start, current_period_end: sub.data.current_period_end } : { tier: 'free', status: 'inactive' });
+                setCustomVehicles(cars?.data || []);
+                setRawLogsArray(logs?.data || []);
 
-                if (tokenRes.data) {
+                if (tokenRes?.data) {
                     setTokenRecord(tokenRes.data);
                 }
 
                 // FIXED CONDITION: Uses our non-reactive useRef pointer to assign the truck fallback value safely without re-triggering loadData
-                if (cars.data?.length > 0 && !selectedVehicleRef.current) {
+                if (cars?.data?.length > 0 && !selectedVehicleRef.current) {
                     setSelectedCustomVehicle(cars.data[0].id);
                 }
             } catch (err) {
                 console.error('EcoRoute core data load exception:', err);
+                setErrorMsg('Network error synchronizing telemetry pipelines.');
             } finally {
+                // Guaranteed safety release execution trigger
                 setLoading(false);
             }
         },
@@ -80,7 +101,9 @@ export function useEcoRouteData() {
     );
 
     useEffect(() => {
-        if (user?.id) loadData(false);
+        if (user?.id) {
+            loadData(false);
+        }
     }, [user?.id, loadData]);
 
     async function handleCalculate(formPayload) {

@@ -32,7 +32,7 @@ export default function DistanceField({ distance, setDistance, unit, setUnit, se
     };
 
     return (
-        <div className="grid grid-cols-1 gap-2 font-mono text-xs items-end relative">
+        <div className="grid grid-cols-2 gap-2 font-mono text-xs items-end relative">
             <div>
                 <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider font-bold">DISTANCE (KM)</label>
                 <div className="relative w-full flex items-center">
@@ -42,11 +42,11 @@ export default function DistanceField({ distance, setDistance, unit, setUnit, se
                     </button>
                 </div>
             </div>
-            <div className="hidden ">
+            <div>
                 <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider font-bold">UNIT</label>
-                <select value={unit} disabled={true} onChange={(e) => setUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer font-mono text-xs h-[34px]">
-                    <option selected value="km">KM</option>
-                    <option value="miles">MILES</option>
+                <select value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer font-mono text-xs h-[34px]">
+                    <option value="km">KM</option>
+                    {/* <option value="miles">MILES</option> */}
                 </select>
             </div>
 
