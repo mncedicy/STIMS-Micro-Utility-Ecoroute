@@ -44,8 +44,15 @@ export default function DispatchForm({
     const [osrmLegsData, setOsrmLegsData] = useState([]);
     const [osrmWaypointsData, setOsrmWaypointsData] = useState([]);
 
-    const todayString = '2026-08-21';
-    const defaultStartMonthString = '2026-07-21';
+    // 1. Generate live calculated date string components
+    const currentDateObj = new Date();
+    const todayString = currentDateObj.toISOString().split('T')[0];
+
+    // 2. Subtract exactly 1 month to establish the baseline start month boundary
+    const pastDateObj = new Date();
+    pastDateObj.setMonth(pastDateObj.getMonth() - 1);
+    const defaultStartMonthString = pastDateObj.toISOString().split('T')[0];
+
 
     const [taxStartDate, setTaxStartDate] = useState(defaultStartMonthString);
     const [taxEndDate, setTaxEndDate] = useState(todayString);

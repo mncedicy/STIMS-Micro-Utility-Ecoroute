@@ -29,7 +29,7 @@ function MapEventsHandler({ onMapClick }) {
     return null;
 }
 
-// IMMUTABLE MAP INTERNALS RUNNER (Moved outside parent to freeze re-mount/reload loops)
+// IMMUTABLE MAP INTERNALS RUNNER (Shared across components to stop rendering loops)
 export function StaticMapContent({ customRef, markerPositions, roadGeometry, onMapClick }) {
     return (
         <MapContainer
@@ -61,7 +61,7 @@ export default function MapCoordinatePicker({ coordinates, onCoordinatesChange, 
     const [isMaximized, setIsMaximized] = useState(false);
     const inlineMapRef = useRef(null);
 
-    // Explicitly parse coordinates string arrays safely into numerical float objects
+    // Parse coordinate strings safely
     const markerPositions = (Array.isArray(coordinates) ? coordinates : [])
         .map(coord => {
             if (!coord || typeof coord !== 'string' || !coord.includes(',')) return null;
@@ -89,8 +89,7 @@ export default function MapCoordinatePicker({ coordinates, onCoordinatesChange, 
                     .map(pos => `${pos[1]},${pos[0]}`)
                     .join(';');
 
-                const url = `https://router.project-osrm.org/route/v1/driving/${coordinateStringParam}?overview=full&geometries=geojson`;
-                const res = await fetch(url);
+                const url = `https://router.project-osrm.org/route/v1/driving/${coordinateStringParam}?overview=full&geometries=geojson`; const res = await fetch(url);
                 const data = await res.json();
 
                 if (data.code === 'Ok' && data.routes?.[0]) {
@@ -112,7 +111,7 @@ export default function MapCoordinatePicker({ coordinates, onCoordinatesChange, 
         fetchSequentialOsrmRoute();
     }, [coordinates]);
 
-    // AUTO-FIT BOUNDS ON MODAL CLOSE (Fires cleanly without interrupting user interactions)
+    // AUTO-FIT BOUNDS ON MODAL CLOSE
     const handleCloseModal = () => {
         setIsMaximized(false);
 

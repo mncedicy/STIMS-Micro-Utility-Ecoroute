@@ -6,12 +6,21 @@ import React, { useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { RotateCcw, CheckCircle2 } from 'lucide-react';
 import { StaticMapContent } from './MapCoordinatePicker';
+import FloatingAddressSearch from './FloatingAddressSearch';
 import L from 'leaflet';
+
+// FIXED LEAFLET MARKER RESOLUTION
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 
 export default function MapCoordinatePickerModal({ onClose, loadingRoute, markerPositions, roadGeometry, clearPoints, handleMapClick }) {
     const modalMapRef = useRef(null);
 
-    // Forces modal map viewport instance to compute space metrics upon open state loading
+    // Forces modal map viewport instance to compute space metrics upon loading
     useEffect(() => {
         setTimeout(() => {
             const mapInstance = modalMapRef.current;
@@ -25,10 +34,26 @@ export default function MapCoordinatePickerModal({ onClose, loadingRoute, marker
                 }
             }
         }, 100);
-    }, []);
+    }, [markerPositions]);
+
+    // COMPUTED MATH LOGIC: Sums up true road geometry leg paths to resolve exact KM metrics
+    const getComputedDistanceKm = () => {
+        if (markerPositions.length < 2 || roadGeometry.length === 0) return 0;
+
+        let totalMeters = 0;
+        for (let i = 0; i < roadGeometry.length - 1; i++) {
+            // Leaflet native distance mapping: formats [lat, lng] sets cleanly
+            const pointA = L.latLng(roadGeometry[i]);
+            const pointB = L.latLng(roadGeometry[i + 1]);
+            totalMeters += pointA.distanceTo(pointB);
+        }
+        return totalMeters / 1000;
+    };
+
+    const computedKm = getComputedDistanceKm();
 
     return createPortal(
-        <div className="fixed inset-0 w-screen h-screen flex justify-center items-center p-4 z-[99999] select-none font-mono text-xs">
+        <div className="fixed inset-0 w-screen h-screen flex justify-center items-center p-4 z-[99999] select-text font-mono text-xs">
             {/* Backdrop glass overlay */}
             <div className="absolute inset-0 w-full h-full bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300" onClick={onClose} />
 
@@ -41,17 +66,29 @@ export default function MapCoordinatePickerModal({ onClose, loadingRoute, marker
                         🗺️ EXPANDED ROUTING GRID CALCULATOR (OSRM)
                     </span>
 
-                    <div className={`w-full gap-3 min-h-8 flex flex-row items-center justify-between pb-3 ${markerPositions.length >= 2 ? 'md:grid md:grid-cols-4' : ''}`}>
-                        <h4 className={`text-xs text-slate-400 font-sans normal-case leading-relaxed flex items-center pr-2 ${markerPositions.length >= 2 ? 'md:col-span-3' : ''}`}>
+                    {/* Horizontal 5-column distributed grid matrix */}
+                    <div className={`w-full gap-3 min-h-8 flex flex-row items-center justify-between pb-3 ${markerPositions.length >= 2 ? 'md:grid md:grid-cols-5' : ''}`}>
+
+                        {/* Column 1: Shortened, action-oriented status text */}
+                        <h4 className={`text-xs text-slate-400 font-sans normal-case leading-relaxed flex items-center pr-2 ${markerPositions.length >= 2 ? 'md:col-span-2' : ''}`}>
                             {loadingRoute ? (
-                                <span className="text-blue-400 animate-pulse">⚡ Calculating sequence telemetry parameters...</span>
+                                <span className="text-blue-400 animate-pulse">⚡ Calculating routes...</span>
                             ) : markerPositions.length >= 2 ? (
-                                `🚗 Full multi-point path routed: ${markerPositions.length} target points logged.`
+                                `🚗 routed: ${markerPositions.length} points (${computedKm.toFixed(0)}km)`
                             ) : (
-                                "📍 Drop pins directly across the expanded tactical network layout framework."
+                                "📍 Drop pins direct"
                             )}
                         </h4>
 
+                        {/* Column 2: The Floating Autocomplete Search Component */}
+                        <div className={`relative ${markerPositions.length >= 2 ? 'md:col-span-2' : 'w-72 md:w-80 mx-2'}`}>
+                            <FloatingAddressSearch
+                                mapInstance={modalMapRef}
+                                handleMapClick={handleMapClick}
+                            />
+                        </div>
+
+                        {/* Column 3: Actions Control Toolbar Panel */}
                         <div className={`flex items-center space-x-2 ml-auto flex-shrink-0 ${markerPositions.length >= 2 ? 'md:col-span-1 md:justify-end' : ''}`}>
                             {markerPositions.length > 0 && (
                                 <button

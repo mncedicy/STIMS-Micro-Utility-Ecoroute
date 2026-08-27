@@ -28,6 +28,12 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
         waypointsArray: body.osrm_waypoints_data || []
     };
 
+    console.log('[Pipeline Service] Emission Calculation Log:', {
+        userId: user.id,
+        category: cleanType,
+        ...finalMetadataBlock
+    });
+
     // 1. Write transactional log
     const { data: dbLogEntry, error: dbWriteError } = await supabaseAdmin
         .from('ecoroute_emissions_logs')
@@ -61,6 +67,11 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
         })
         .select()
         .single();
+
+    console.log('[ecoroute_emissions_logs] Emission Calculation Log:', {
+        dbLogEntry: dbLogEntry,
+        dbWriteError: dbWriteError
+    });
 
     if (dbWriteError) throw new Error(`Database policy restriction: ${dbWriteError.message}`);
 
