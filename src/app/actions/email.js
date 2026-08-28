@@ -125,6 +125,7 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
         });
 
         if (!dispatchResult.success) {
+            console.error('[Email Exception]:', dispatchResult);
             throw new Error(dispatchResult.error || "Failed to deliver compliance report via available mail routes.");
         }
 
