@@ -44,7 +44,7 @@ export async function GET(request) {
     if (error) {
         console.error('Supabase OAuth Exchange Failure:', error.message);
         await supabase.auth.signOut();
-        return NextResponse.redirect(`${requestUrl.origin}/?OAuth_error=${encodeURIComponent(error.message)}`);
+        return NextResponse.redirect(`${requestUrl.origin}/?error=auth_${encodeURIComponent(error.message)}`);
     }
 
     return response;
