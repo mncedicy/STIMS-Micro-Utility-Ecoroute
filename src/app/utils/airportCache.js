@@ -1,55 +1,41 @@
-// /src/app/utils/airportCache.js
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-
 /**
  * Pure Real-time Airport Lookup Engine (Next.js 16 / Turbopack Safe)
- * Completely free of compilation caching restrictions.
  */
 export async function getCachedAirportCoords(airportIdentifier) {
     if (!airportIdentifier) return null;
 
-    const cleanIdString = airportIdentifier.trim();
-    const cookieStore = await cookies();
+    const cleanIdString = airportIdentifier.toString().trim().toUpperCase();
 
-    const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        {
-            cookies: {
-                getAll() {
-                    return cookieStore.getAll();
-                },
-                setAll(cookiesToSet) {
-                    try {
-                        cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
-                        );
-                    } catch { /* Safe to ignore in static read parameters */ }
-                },
-            },
+    try {
+        const res = await fetch('https://davidmegginson.github.io/ourairports-data/airports.csv', {
+            next: { revalidate: 86400 }
+        });
+
+        if (!res.ok) return null;
+        const text = await res.text();
+        const lines = text.split('\n');
+
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (!line) continue;
+
+            const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+            const id = cols[0];
+            const icao = cols[1]?.toUpperCase();
+            const lat = parseFloat(cols[4]);
+            const lon = parseFloat(cols[5]);
+            const iata = cols[13]?.toUpperCase();
+            const name = cols[3]?.toUpperCase();
+
+            if (cleanIdString === id || cleanIdString === iata || cleanIdString === icao || cleanIdString === name) {
+                if (!isNaN(lat) && !isNaN(lon)) {
+                    return { lat, lon };
+                }
+            }
         }
-    );
-
-    let query = supabase.from('ecoroute_static_airports').select('latitude, longitude');
-
-    // FIXED SEARCH LOGIC: If a numeric ID is supplied, check the id column natively. 
-    // Fall back to matching names to ensure backwards compatibility with older entry components.
-    if (/^\d+$/.test(cleanIdString)) {
-        query = query.eq('id', parseInt(cleanIdString, 10));
-    } else {
-        query = query.eq('name', cleanIdString);
+    } catch (err) {
+        console.warn(`[Airport Database Engine] Lookup failed for parameter '${cleanIdString}':`, err.message);
     }
 
-    const { data, error } = await query.maybeSingle();
-
-    if (error || !data) {
-        console.warn(`[Airport Database Engine] Look up failed for identifier parameter: ${cleanIdString}`);
-        return null;
-    }
-
-    return {
-        lat: parseFloat(data.latitude),
-        lon: parseFloat(data.longitude)
-    };
+    return null;
 }

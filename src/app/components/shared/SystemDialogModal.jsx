@@ -1,8 +1,9 @@
-// src\app\components\shared\SystemDialogModal.jsx
+// src/app/components/shared/SystemDialogModal.jsx
 
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function SystemDialogModal({
     isOpen,
@@ -13,7 +14,14 @@ export default function SystemDialogModal({
     onConfirm,
     onCancel
 }) {
-    if (!isOpen) return null;
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
+
+    if (!isOpen || !mounted) return null;
 
     // Resolve structural status outline accents dynamically
     const accentColorsMatrix = {
@@ -24,12 +32,11 @@ export default function SystemDialogModal({
 
     const currentAccent = accentColorsMatrix[status] || accentColorsMatrix.blue;
 
-    return (
-        /* MODIFIED LAYOUT: Shifted from flex centering to items-start with pt-16 ensuring content scaling anchors perfectly on top of screens */
-        <div className="fixed inset-0 w-full h-full flex justify-center items-start pt-16 p-4  pt-50 z-[9999] select-none font-mono text-xs overflow-y-auto">
+    return createPortal(
+        <div className="fixed inset-0 w-screen h-screen flex justify-center items-center p-4 z-[99999] select-none font-mono text-xs overflow-y-auto">
             {/* Dark glass backdrop layout mask */}
             <div
-                className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300"
+                className="absolute inset-0 w-full h-full bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300"
                 onClick={onCancel || (() => { })}
             />
 
@@ -67,13 +74,14 @@ export default function SystemDialogModal({
                     <button
                         type="button"
                         onClick={onConfirm}
-                        className={`px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider text-[10px] rounded-lg transition-all shadow-sm shadow-blue-600/10 cursor-pointer`}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider text-[10px] rounded-lg transition-all shadow-sm shadow-blue-600/10 cursor-pointer"
                     >
                         {confirmText}
                     </button>
                 </div>
 
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

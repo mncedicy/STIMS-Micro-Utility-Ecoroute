@@ -1,206 +1,299 @@
-// src\app\components\fleet\asset\FleetAssetSelectorCascade.jsx
+// src/app/components/fleet/asset/FleetAssetSelectorCascade.jsx
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../../lib/supabaseClient';
+import React, { useState, useEffect } from 'react';
 import SearchableDropdownField from '../../shared/SearchableDropdownField';
-import FleetAssetTechnicalHud from './FleetAssetTechnicalHud';
 
-export default function FleetAssetSelectorCascade({ saving, onSelectedModelChange }) {
+export default function FleetAssetSelectorCascade({
+    onSelectedModelChange,
+    onVehicleSelected,
+    onVehicleSelect,
+    onSelect,
+    onReset,
+    saving = false
+}) {
     const [years, setYears] = useState([]);
     const [makes, setMakes] = useState([]);
     const [models, setModels] = useState([]);
+    const [options, setOptions] = useState([]);
 
     const [selectedYear, setSelectedYear] = useState('');
     const [selectedMake, setSelectedMake] = useState('');
-    const [selectedModelId, setSelectedModelId] = useState('');
-    const [selectedModelData, setSelectedModelData] = useState(null);
+    const [selectedModel, setSelectedModel] = useState('');
+    const [selectedOption, setSelectedOption] = useState('');
 
-    const [openDropdown, setOpenDropdown] = useState(''); // 'year', 'make', 'model', or ''
-    const [searchLoading, setSearchLoading] = useState(false);
+    const [openDropdown, setOpenDropdown] = useState(null);
 
-    // Track previous lookup criteria parameters to prevent query execution loops
-    const lastMakeQuery = useRef('');
-    const lastModelQuery = useRef('');
+    const [loadingYears, setLoadingYears] = useState(false);
+    const [loadingMakes, setLoadingMakes] = useState(false);
+    const [loadingModels, setLoadingModels] = useState(false);
+    const [loadingOptions, setLoadingOptions] = useState(false);
+    const [loadingVehicleDetails, setLoadingVehicleDetails] = useState(false);
 
-    // --- PIPELINE 1: Load ALL historical unique years using the optimized database RPC function ---
+    // Unified callback dispatcher that safely supports any prop naming convention
+    const notifyParent = (vehicle) => {
+        if (typeof onSelectedModelChange === 'function') {
+            onSelectedModelChange(vehicle);
+        }
+        if (typeof onVehicleSelected === 'function') {
+            onVehicleSelected(vehicle);
+        }
+        if (typeof onVehicleSelect === 'function') {
+            onVehicleSelect(vehicle);
+        }
+        if (typeof onSelect === 'function') {
+            onSelect(vehicle);
+        }
+    };
+
+    const toggleDropdown = (name) => {
+        if (saving) return;
+        setOpenDropdown((prev) => (prev === name ? null : name));
+    };
+
+    const parseMenuItems = (data) => {
+        if (!data || !data.menuItem) return [];
+        const items = Array.isArray(data.menuItem) ? data.menuItem : [data.menuItem];
+        return items.filter(Boolean);
+    };
+
+    // 1. Fetch available years
     useEffect(() => {
-        async function fetchDistinctYears() {
+        async function fetchYears() {
+            setLoadingYears(true);
             try {
-                const { data, error } = await supabase
-                    .rpc('get_distinct_vehicle_years');
+                const res = await fetch('/api/fueleconomy?endpoint=vehicle/menu/year');
+                const data = await res.json();
+                const items = parseMenuItems(data);
 
-                if (error) throw error;
+                const yearList = items
+                    .map((item) => String(item.value))
+                    .sort((a, b) => Number(b) - Number(a));
 
-                const formattedYears = data.map(d => d.year_log.toString());
-                setYears(formattedYears);
+                setYears(yearList);
             } catch (err) {
-                console.error('Database RPC years fetching exception occurred:', err);
+                console.error('[FuelEconomy] Failed to load years:', err);
+                setYears([]);
+            } finally {
+                setLoadingYears(false);
             }
         }
-        fetchDistinctYears();
+        fetchYears();
     }, []);
 
-    // --- PIPELINE 2: Live Search Unique Manufacturer Brands Natively via Database Streams ---
-    const fetchMakesFromDatabase = async (inputQuery = '') => {
-        if (!selectedYear) return;
-        setSearchLoading(true);
-        const cleanQuery = inputQuery.trim();
-        lastMakeQuery.current = cleanQuery;
-
-        try {
-            let baseQuery = supabase
-                .from('ecoroute_static_vehicles')
-                .select('make')
-                .eq('year', parseInt(selectedYear, 10))
-                .order('make', { ascending: true })
-                .limit(100);
-
-            if (cleanQuery.length > 0) {
-                baseQuery = baseQuery.ilike('make', `%${cleanQuery}%`);
-            }
-
-            const { data, error } = await baseQuery;
-            if (error) throw error;
-
-            const uniqueMakes = [...new Set(data.map(d => d.make))];
-            setMakes(uniqueMakes);
-        } catch (err) {
-            console.error('Database server-side make search exception:', err);
-        } finally {
-            setSearchLoading(false);
-        }
-    };
-
-    // --- PIPELINE 3: Live Search Engine Classification Models Based on Year + Make + Input Text ---
-    const fetchModelsFromDatabase = async (inputQuery = '') => {
-        if (!selectedMake || !selectedYear) return;
-        setSearchLoading(true);
-        const cleanQuery = inputQuery.trim();
-        lastModelQuery.current = cleanQuery;
-
-        try {
-            let baseQuery = supabase
-                .from('ecoroute_static_vehicles')
-                .select('id, model, fuel_type_1')
-                .eq('year', parseInt(selectedYear, 10))
-                .eq('make', selectedMake)
-                .order('model', { ascending: true })
-                .limit(100);
-
-            if (cleanQuery.length > 0) {
-                baseQuery = baseQuery.ilike('model', `%${cleanQuery}%`);
-            }
-
-            const { data, error } = await baseQuery;
-            if (error) throw error;
-
-            setModels(data);
-        } catch (err) {
-            console.error('Database server-side model search exception:', err);
-        } finally {
-            setSearchLoading(false);
-        }
-    };
-
-    // Reset downstream dependencies immediately whenever the parent anchor year drops or shifts
+    // 2. Fetch makes
     useEffect(() => {
-        setMakes([]); setModels([]); setSelectedMake(''); setSelectedModelId(''); setSelectedModelData(null);
-        onSelectedModelChange(null);
-        lastMakeQuery.current = '';
-        lastModelQuery.current = '';
-
-        if (selectedYear) {
-            fetchMakesFromDatabase('');
+        if (!selectedYear) {
+            setMakes([]);
+            return;
         }
+
+        async function fetchMakes() {
+            setLoadingMakes(true);
+            try {
+                const res = await fetch(`/api/fueleconomy?endpoint=vehicle/menu/make?year=${selectedYear}`);
+                const data = await res.json();
+                const items = parseMenuItems(data);
+
+                const makeList = items.map((item) => String(item.value)).sort();
+                setMakes(makeList);
+            } catch (err) {
+                console.error('[FuelEconomy] Failed to load makes:', err);
+                setMakes([]);
+            } finally {
+                setLoadingMakes(false);
+            }
+        }
+        fetchMakes();
     }, [selectedYear]);
 
-    // Reset child options when manufacturer brand switches
+    // 3. Fetch models
     useEffect(() => {
-        setModels([]); setSelectedModelId(''); setSelectedModelData(null);
-        onSelectedModelChange(null);
-        lastModelQuery.current = '';
-
-        if (selectedMake && selectedYear) {
-            fetchModelsFromDatabase('');
+        if (!selectedYear || !selectedMake) {
+            setModels([]);
+            return;
         }
-    }, [selectedMake]);
 
-    // --- PIPELINE 4: Fetch tech specifications details for selected ID ---
-    useEffect(() => {
-        if (!selectedModelId) { setSelectedModelData(null); onSelectedModelChange(null); return; }
-        async function fetchDetails() {
+        async function fetchModels() {
+            setLoadingModels(true);
             try {
-                const { data, error } = await supabase
-                    .from('ecoroute_static_vehicles')
-                    .select('*')
-                    .eq('id', parseInt(selectedModelId, 10))
-                    .single();
-                if (error) throw error;
-                setSelectedModelData(data);
-                onSelectedModelChange(data);
+                const endpoint = `vehicle/menu/model?year=${selectedYear}&make=${encodeURIComponent(selectedMake)}`;
+                const res = await fetch(`/api/fueleconomy?endpoint=${encodeURIComponent(endpoint)}`);
+                const data = await res.json();
+                const items = parseMenuItems(data);
+
+                const modelList = items.map((item) => String(item.value)).sort();
+                setModels(modelList);
             } catch (err) {
-                console.error(err);
+                console.error('[FuelEconomy] Failed to load models:', err);
+                setModels([]);
+            } finally {
+                setLoadingModels(false);
             }
         }
-        fetchDetails();
-    }, [selectedModelId, onSelectedModelChange]);
+        fetchModels();
+    }, [selectedYear, selectedMake]);
 
-    const activeModelName = selectedModelId ? models.find(m => m.id.toString() === selectedModelId)?.model : '';
-    const activeModelFuelType = selectedModelId ? models.find(m => m.id.toString() === selectedModelId)?.fuel_type_1 : '';
+    // 4. Fetch trim options
+    useEffect(() => {
+        if (!selectedYear || !selectedMake || !selectedModel) {
+            setOptions([]);
+            return;
+        }
+
+        async function fetchOptions() {
+            setLoadingOptions(true);
+            try {
+                const endpoint = `vehicle/menu/options?year=${selectedYear}&make=${encodeURIComponent(selectedMake)}&model=${encodeURIComponent(selectedModel)}`;
+                const res = await fetch(`/api/fueleconomy?endpoint=${encodeURIComponent(endpoint)}`);
+                const data = await res.json();
+                const items = parseMenuItems(data);
+
+                const optionList = items.map((item) => ({
+                    label: String(item.text),
+                    value: String(item.value)
+                }));
+
+                setOptions(optionList);
+            } catch (err) {
+                console.error('[FuelEconomy] Failed to load options:', err);
+                setOptions([]);
+            } finally {
+                setLoadingOptions(false);
+            }
+        }
+        fetchOptions();
+    }, [selectedYear, selectedMake, selectedModel]);
+
+    // 5. Fetch full vehicle specs
+    const handleOptionSelect = async (vehicleId) => {
+        setSelectedOption(vehicleId);
+        setOpenDropdown(null);
+
+        if (!vehicleId) {
+            notifyParent(null);
+            if (typeof onReset === 'function') onReset();
+            return;
+        }
+
+        setLoadingVehicleDetails(true);
+        try {
+            const res = await fetch(`/api/fueleconomy?endpoint=vehicle/${vehicleId}`);
+            const data = await res.json();
+
+            const normalizedVehicle = {
+                id: data.id,
+                year: data.year,
+                make: data.make,
+                model: data.model,
+                cylinder: data.cylinders || 'N/A',
+                displ: data.displ ? `${data.displ}L` : 'N/A',
+                trany: data.trany || 'Standard',
+                drive: data.drive || 'Standard',
+                fuel_type: data.fuelType || 'Gasoline',
+                fuel_type_1: data.fuelType1 || data.fuelType || 'Gasoline',
+                co2_tailpipe_gpm: parseFloat(data.co2TailpipeGpm) || 0,
+                comb_mpg: parseFloat(data.comb08) || 0,
+                comb_mpg_1: parseFloat(data.comb08) || 0,
+                city_mpg: parseFloat(data.city08) || 0,
+                hwy_mpg: parseFloat(data.highway08) || 0
+            };
+
+            notifyParent(normalizedVehicle);
+        } catch (err) {
+            console.error('[FuelEconomy] Failed to fetch full specs:', err);
+        } finally {
+            setLoadingVehicleDetails(false);
+        }
+    };
+
+    const handleYearChange = (val) => {
+        setSelectedYear(val);
+        setSelectedMake('');
+        setSelectedModel('');
+        setSelectedOption('');
+        setOpenDropdown(null);
+        notifyParent(null);
+        if (typeof onReset === 'function') onReset();
+    };
+
+    const handleMakeChange = (val) => {
+        setSelectedMake(val);
+        setSelectedModel('');
+        setSelectedOption('');
+        setOpenDropdown(null);
+        notifyParent(null);
+        if (typeof onReset === 'function') onReset();
+    };
+
+    const handleModelChange = (val) => {
+        setSelectedModel(val);
+        setSelectedOption('');
+        setOpenDropdown(null);
+        notifyParent(null);
+        if (typeof onReset === 'function') onReset();
+    };
 
     return (
-        <>
-            {/* Field 2 of 4: Searchable Year Selection */}
-            <SearchableDropdownField
-                label="MANUFACTURING YEAR LOG"
-                placeholder="-- SEARCH YEAR --"
-                valueDisplay={selectedYear}
-                searchPlaceholder="Type to filter years..."
-                items={years}
-                disabled={saving}
-                isOpen={openDropdown === 'year'}
-                onToggle={() => setOpenDropdown(openDropdown === 'year' ? '' : 'year')}
-                onSelect={(year) => setSelectedYear(year)}
-            />
+        <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 1. MODEL YEAR */}
+                <SearchableDropdownField
+                    label="1. MODEL YEAR"
+                    options={years.map((y) => ({ label: String(y), value: String(y) }))}
+                    selectedValue={selectedYear}
+                    onSelect={handleYearChange}
+                    isOpen={openDropdown === 'year'}
+                    onToggle={() => toggleDropdown('year')}
+                    placeholder={loadingYears ? 'Loading years...' : 'Select Year'}
+                    disabled={saving || loadingYears}
+                />
 
-            {/* Field 3 of 4: Searchable Manufacturer Brand Selection */}
-            <SearchableDropdownField
-                label="VEHICLE MANUFACTURER (MAKE)"
-                placeholder={searchLoading ? "Streaming database records..." : "-- SEARCH MANUFACTURER --"}
-                valueDisplay={selectedMake ? selectedMake.toUpperCase() : ''}
-                searchPlaceholder="Type to query matching makes from database..."
-                items={makes}
-                disabled={!selectedYear || saving}
-                isOpen={openDropdown === 'make'}
-                onToggle={() => setOpenDropdown(openDropdown === 'make' ? '' : 'make')}
-                onSelect={(make) => setSelectedMake(make)}
-                renderItem={(make) => make.toString().toUpperCase()} // FIXED: Returns clean string format parameter primitive instead of layout block object
-                onSearchChange={(q) => fetchMakesFromDatabase(q)}
-                loading={searchLoading}
-            />
-
-            {/* Field 4 of 4: Searchable Engine Class Variant Selection */}
-            <SearchableDropdownField
-                label="SPECIFIC ENGINE CLASSIFICATION MODEL"
-                placeholder={searchLoading ? "Streaming database records..." : "-- SELECT FUEL SPECIFIC VARIANT LAYER --"}
-                valueDisplay={activeModelName ? `${activeModelName} (${activeModelFuelType})` : ''}
-                searchPlaceholder="Type model name attributes to query database..."
-                items={models}
-                disabled={!selectedMake || saving}
-                isOpen={openDropdown === 'model'}
-                onToggle={() => setOpenDropdown(openDropdown === 'model' ? '' : 'model')}
-                onSelect={(modelObj) => setSelectedModelId(modelObj.id.toString())}
-                renderItem={(modelObj) => `${modelObj.model} (${modelObj.fuel_type_1})`} // FIXED: Returns native text string template layout avoiding Element type object crash
-                onSearchChange={(q) => fetchModelsFromDatabase(q)}
-                loading={searchLoading}
-            />
-
-            {/* Technical HUD Spec Display card row spans full layout width underneath the grid columns */}
-            <div className="col-span-1 sm:col-span-2 pt-3">
-                <FleetAssetTechnicalHud selectedModelData={selectedModelData} />
+                {/* 2. VEHICLE MAKE */}
+                <SearchableDropdownField
+                    label="2. VEHICLE MAKE"
+                    options={makes.map((m) => ({ label: String(m), value: String(m) }))}
+                    selectedValue={selectedMake}
+                    onSelect={handleMakeChange}
+                    isOpen={openDropdown === 'make'}
+                    onToggle={() => toggleDropdown('make')}
+                    placeholder={loadingMakes ? 'Loading makes...' : 'Select Make'}
+                    disabled={saving || !selectedYear || loadingMakes}
+                />
             </div>
-        </>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 3. VEHICLE MODEL */}
+                <SearchableDropdownField
+                    label="3. VEHICLE MODEL"
+                    options={models.map((mod) => ({ label: String(mod), value: String(mod) }))}
+                    selectedValue={selectedModel}
+                    onSelect={handleModelChange}
+                    isOpen={openDropdown === 'model'}
+                    onToggle={() => toggleDropdown('model')}
+                    placeholder={loadingModels ? 'Loading models...' : 'Select Model'}
+                    disabled={saving || !selectedMake || loadingModels}
+                />
+
+                {/* 4. ENGINE & TRANSMISSION SPEC */}
+                <SearchableDropdownField
+                    label="4. ENGINE & TRANSMISSION SPEC"
+                    options={options}
+                    selectedValue={selectedOption}
+                    onSelect={handleOptionSelect}
+                    isOpen={openDropdown === 'option'}
+                    onToggle={() => toggleDropdown('option')}
+                    placeholder={loadingOptions ? 'Loading specs...' : 'Select Trim / Spec'}
+                    disabled={saving || !selectedModel || loadingOptions}
+                />
+            </div>
+
+            {loadingVehicleDetails && (
+                <div className="p-2 text-center text-[10px] text-blue-400 font-mono animate-pulse bg-blue-950/20 rounded border border-blue-900/30">
+                    FETCHING TELEMETRY SPECS FROM FUELECONOMY.GOV DATA MATRIX...
+                </div>
+            )}
+        </div>
     );
 }

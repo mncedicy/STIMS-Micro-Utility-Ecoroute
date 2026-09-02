@@ -1,44 +1,45 @@
 // /src/app/api/export/airports/route.js
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
 
 export async function GET() {
     try {
-        // Query all airports arranged sequentially from your static database table
-        const { data: airports, error } = await supabaseAdmin
-            .from('ecoroute_static_airports')
-            .select('id, name, iso_country, municipality')
-            .order('name', { ascending: true });
+        const TARGET_URL = 'https://davidmegginson.github.io/ourairports-data/airports.csv';
 
-        if (error) throw error;
-
-        // Establish clean CSV column titles headers row text
-        let csvContent = 'AIRPORT_ID,AIRPORT_NAME,COUNTRY_CODE,MUNICIPALITY\n';
-
-        (airports || []).forEach(airport => {
-            // Strip out conflicting commas or broken quotes that break CSV line cells
-            const cleanName = (airport.name || '').replace(/,/g, ' ').replace(/"/g, '""').trim();
-            const cleanCountry = (airport.iso_country || '').trim().toUpperCase();
-            const cleanMuni = (airport.municipality || '').replace(/,/g, ' ').replace(/"/g, '""').trim();
-
-            csvContent += `${airport.id},"${cleanName}","${cleanCountry}","${cleanMuni}"\n`;
+        // Fetch raw CSV data stream directly from OurAirports
+        const response = await fetch(TARGET_URL, {
+            headers: {
+                'User-Agent': 'EcoRoute-System-Agent/1.0'
+            },
+            // Revalidate every 24 hours (86400 seconds) or keep 'no-store' for live fetch
+            next: { revalidate: 86400 }
         });
 
+        if (!response.ok) {
+            throw new Error(`Upstream network error: ${response.status} ${response.statusText}`);
+        }
+
+        const csvData = await response.text();
+
         // Output raw array text buffers directly back to browser download streams
-        return new Response(csvContent, {
+        return new Response(csvData, {
             status: 200,
             headers: {
                 'Content-Type': 'text/csv; charset=utf-8',
-                'Content-Disposition': 'attachment; filename=ecoroute_static_airports_registry.csv'
+                'Content-Disposition': 'attachment; filename=ourairports_global_registry.csv',
+                'Cache-Control': 'public, max-age=86400, s-maxage=86400'
             }
         });
 
     } catch (err) {
-        console.error('[Airports CSV Exporter Disruption]:', err);
-        return new Response('Database file extraction channel failure: ' + err.message, { status: 500 });
+        console.error('[Airports External CSV Exporter Disruption]:', err);
+        return new Response(
+            JSON.stringify({
+                error: 'External CSV extraction channel failure',
+                details: err.message
+            }),
+            {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' }
+            }
+        );
     }
 }

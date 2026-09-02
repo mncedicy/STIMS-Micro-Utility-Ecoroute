@@ -1,4 +1,4 @@
-// src\app\components\home\dispatch\FlightFields.jsx
+// src/app/components/home/dispatch/FlightFields.jsx
 
 'use client';
 
@@ -38,12 +38,12 @@ export default function FlightFields({
 
     const selectedOriginNode = originAirportsList?.find(a => a.id?.toString() === depAirport?.toString() || a.name === depAirport);
     const originDisplayLabel = selectedOriginNode
-        ? `${cleanAirportName(selectedOriginNode.name)}, ${selectedOriginNode.iso_country}, ${selectedOriginNode.municipality || 'N/A'}`
+        ? `${cleanAirportName(selectedOriginNode.name)}${selectedOriginNode.iata ? ` (${selectedOriginNode.iata})` : ''}, ${selectedOriginNode.iso_country}, ${selectedOriginNode.municipality || 'N/A'}`
         : depAirport;
 
     const selectedDestNode = destAirportsList?.find(a => a.id?.toString() === destAirport?.toString() || a.name === destAirport);
     const destDisplayLabel = selectedDestNode
-        ? `${cleanAirportName(selectedDestNode.name)}, ${selectedDestNode.iso_country}, ${selectedDestNode.municipality || 'N/A'}`
+        ? `${cleanAirportName(selectedDestNode.name)}${selectedDestNode.iata ? ` (${selectedDestNode.iata})` : ''}, ${selectedDestNode.iso_country}, ${selectedDestNode.municipality || 'N/A'}`
         : destAirport;
 
     return (
@@ -52,14 +52,14 @@ export default function FlightFields({
                 <div className="relative">
                     <SearchableDropdownField
                         label="ORIGIN AIRPORT"
-                        placeholder={searchLoading ? "Loading database..." : "Search name, town or country..."}
+                        placeholder={searchLoading ? "Loading dataset..." : "Search name, town or country..."}
                         valueDisplay={originDisplayLabel}
-                        searchPlaceholder="Type airport name, municipality, or country..."
+                        searchPlaceholder="Type airport name, town, or country..."
                         items={validOriginList}
                         isOpen={openDropdownKey === 'origin'}
                         onToggle={() => setOpenDropdownKey(openDropdownKey === 'origin' ? null : 'origin')}
                         onSelect={(airport) => setDepAirport(airport.id.toString())}
-                        renderItem={(airport) => `${cleanAirportName(airport.name)}, ${airport.iso_country}, ${airport.municipality || 'N/A'}`}
+                        renderItem={(airport) => `${cleanAirportName(airport.name)}${airport.iata ? ` (${airport.iata})` : ''}, ${airport.iso_country}, ${airport.municipality || 'N/A'}`}
                         onSearchChange={(q) => onSearchAirports(q, 0, 'origin')}
                         onLoadMore={(q) => onSearchAirports(q, -1, 'origin')}
                         loading={searchLoading}
@@ -68,14 +68,14 @@ export default function FlightFields({
                 <div className="relative">
                     <SearchableDropdownField
                         label="DESTINATION AIRPORT"
-                        placeholder={searchLoading ? "Loading database..." : "Search name, town or country..."}
+                        placeholder={searchLoading ? "Loading dataset..." : "Search name, town or country..."}
                         valueDisplay={destDisplayLabel}
-                        searchPlaceholder="Type airport name, municipality, or country..."
+                        searchPlaceholder="Type airport name, town, or country..."
                         items={validDestList}
                         isOpen={openDropdownKey === 'dest'}
                         onToggle={() => setOpenDropdownKey(openDropdownKey === 'dest' ? null : 'dest')}
                         onSelect={(airport) => setDestAirport(airport.id.toString())}
-                        renderItem={(airport) => `${cleanAirportName(airport.name)}, ${airport.iso_country}, ${airport.municipality || 'N/A'}`}
+                        renderItem={(airport) => `${cleanAirportName(airport.name)}${airport.iata ? ` (${airport.iata})` : ''}, ${airport.iso_country}, ${airport.municipality || 'N/A'}`}
                         onSearchChange={(q) => onSearchAirports(q, 0, 'dest')}
                         onLoadMore={(q) => onSearchAirports(q, -1, 'dest')}
                         loading={searchLoading}

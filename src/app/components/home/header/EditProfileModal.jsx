@@ -1,13 +1,14 @@
-// src\app\components\home\header\EditProfileModal.jsx
-
+// src/app/components/home/header/EditProfileModal.jsx
 
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../../lib/supabaseClient';
 import SearchableDropdownField from '../../shared/SearchableDropdownField';
 
 export default function EditProfileModal({ isOpen, onClose, user, profile }) {
+    const [mounted, setMounted] = useState(false);
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState({ text: '', success: false });
 
@@ -19,6 +20,11 @@ export default function EditProfileModal({ isOpen, onClose, user, profile }) {
     const [countryList, setCountryList] = useState([]);
     const [selectedCountry, setSelectedCountry] = useState(null);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
 
     useEffect(() => {
         async function fetchCountries() {
@@ -89,10 +95,10 @@ export default function EditProfileModal({ isOpen, onClose, user, profile }) {
         }
     };
 
-    if (!isOpen) return null;
+    if (!isOpen || !mounted) return null;
 
-    return (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-start justify-center p-4 pt-10 overflow-y-auto">
+    return createPortal(
+        <div className="fixed inset-0 z-[99999] bg-slate-950/80 backdrop-blur-sm flex items-start justify-center p-4 pt-10 overflow-y-auto">
             <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 transition-all duration-300 stims-hover-glow shadow-sm relative top-4">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                     <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
@@ -201,6 +207,7 @@ export default function EditProfileModal({ isOpen, onClose, user, profile }) {
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

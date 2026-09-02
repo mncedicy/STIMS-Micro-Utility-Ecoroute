@@ -1,8 +1,9 @@
-// src\app\components\fleet\log\ExportModal.js
+// src/app/components/fleet/log/ExportModal.js
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { emailPdfReport } from '@/app/actions/email';
 
 export default function ExportModal({
@@ -14,11 +15,17 @@ export default function ExportModal({
     endDate,
     selectedFilterVehicleId
 }) {
+    const [mounted, setMounted] = useState(false);
     const [statusMsg, setStatusMsg] = useState('');
     const [sending, setSending] = useState(false);
 
     const initialEmailLookup = user?.email || user?.user?.email || user?.user_metadata?.email || '';
     const [customTargetEmail, setCustomTargetEmail] = useState(initialEmailLookup);
+
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
 
     const getTargetPdfUrl = () => {
         let targetDownloadUrl = `/api/export/pdf?userId=${user?.id}`;
@@ -89,8 +96,10 @@ export default function ExportModal({
         }
     };
 
-    return (
-        <div className="fixed inset-0 z- flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-mono text-xs">
+    if (!mounted) return null;
+
+    return createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-mono text-xs">
             <div className="w-full max-w-sm p-6 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl space-y-4 mx-auto transition-all duration-300">
                 <div className="flex items-center space-x-2 border-b border-slate-800 pb-2.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
@@ -137,6 +146,7 @@ export default function ExportModal({
                     <button type="button" disabled={sending} onClick={onClose} className="w-full text-slate-500 hover:text-slate-400 text-center py-1 mt-1 transition-colors uppercase text-[9px] tracking-widest">Dismiss Options</button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

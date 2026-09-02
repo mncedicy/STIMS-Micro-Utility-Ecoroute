@@ -76,10 +76,13 @@ export function useEcoRouteData() {
                     supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
                 ]);
 
+
                 setProfile(prof?.data || null);
                 setSub(sub?.data ? { tier: sub.data.tier, status: sub.data.status, current_period_start: sub.data.current_period_start, current_period_end: sub.data.current_period_end } : { tier: 'free', status: 'inactive' });
                 setCustomVehicles(cars?.data || []);
                 setRawLogsArray(logs?.data || []);
+
+
 
                 if (tokenRes?.data) {
                     setTokenRecord(tokenRes.data);
