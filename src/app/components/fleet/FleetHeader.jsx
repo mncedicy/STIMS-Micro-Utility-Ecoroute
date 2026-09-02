@@ -1,8 +1,7 @@
-// src\app\components\fleet\FleetHeader.jsx
-
 'use client';
 
 import React, { useState } from 'react';
+import VehicleLimitModal from './VehicleLimitModal';
 
 export default function FleetHeader({
     freeTierLimitReached,
@@ -53,41 +52,13 @@ export default function FleetHeader({
                 </div>
             </div>
 
-            {/* FIXED SYSTEM OVERLAY BACKDROP: Clean flexbox layout alignment with w-screen removed */}
-            {isLimitModalOpen && (
-                <div className="fixed inset-0 z-50 h-screen flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in text-slate-100">
-
-                    {/* FLAT CONTAINER CARD */}
-                    <div className="w-full max-w-sm p-6 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl space-y-4 stims-hover-glow text-left">
-                        <div className="flex items-center space-x-2 border-b border-slate-800 pb-2.5">
-                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                            <h4 className="text-[11px] font-bold text-slate-200 uppercase tracking-widest">VEHICLE REGISTRY LIMIT</h4>
-                        </div>
-                        <div className="text-xs space-y-2 text-slate-400 leading-relaxed">
-                            <p className="font-bold text-slate-200 text-sm">Free plans are limited to 1 vehicle entry.</p>
-                            <p>To track unlimited fleet assets, analyze trends, and unlock print certificates, please upgrade your utility profile tier.</p>
-                        </div>
-                        <div className="flex flex-col gap-2 pt-2 text-[10px]">
-                            <button
-                                type="button"
-                                disabled={isPending}
-                                onClick={onUpgradeClickInternal}
-                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-mono uppercase tracking-wider text-[10px] font-bold py-2.5 rounded-lg transition-all shadow-sm shadow-blue-600/10 disabled:opacity-40 cursor-pointer text-center"
-                            >
-                                {isPending ? "Connecting..." : "⭐ Upgrade to Pro (R280 per month)"}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setIsLimitModalOpen(false)}
-                                className="w-full bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 py-2 rounded transition-colors uppercase tracking-wider cursor-pointer text-center"
-                            >
-                                Close Panel
-                            </button>
-                        </div>
-                    </div>
-
-                </div>
-            )}
+            {/* SEPARATED SYSTEM DIALOG MODAL */}
+            <VehicleLimitModal
+                isOpen={isLimitModalOpen}
+                isPending={isPending}
+                onUpgrade={onUpgradeClickInternal}
+                onCancel={() => setIsLimitModalOpen(false)}
+            />
         </div>
     );
 }
