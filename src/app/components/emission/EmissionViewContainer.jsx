@@ -3,9 +3,9 @@
 'use client';
 
 import React from 'react';
-import FleetView from './FleetView';
+import EmissionView from './EmissionView';
 
-export default function FleetViewContainer({
+export default function EmissionViewContainer({
     user,
     customVehicles,
     rawLogsArray,
@@ -23,7 +23,7 @@ export default function FleetViewContainer({
                 </div>
             )}
 
-            <FleetView
+            <EmissionView
                 user={user}
                 customVehicles={customVehicles}
                 rawLogsArray={rawLogsArray}

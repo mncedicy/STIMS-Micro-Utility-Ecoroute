@@ -3,6 +3,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import ReferralLegalSection from './ReferralLegalSection';
 
 export default function LegalPolicyPage() {
     const currentYear = new Date().getFullYear();
@@ -27,7 +28,7 @@ export default function LegalPolicyPage() {
                     </div>
                     <Link
                         href="/"
-                        className="text-[9px] uppercase tracking-wider text-slate-500 hover:text-blue-400 border border-slate-800 rounded px-2.5 py-1 bg-slate-950/60 transition-colors"
+                        className="text-[9px] uppercase tracking-wider text-slate-500 hover:text-blue-400 border border-slate-800 rounded px-2.5 py-1 bg-slate-950/60 transition-colors cursor-pointer"
                     >
                         ◀ Return Home
                     </Link>
@@ -51,7 +52,7 @@ export default function LegalPolicyPage() {
                             Registered corporate operators can cancel their Premium Pro subscription renewals at any time directly through their billing account settings page. No manual authorization or support ticket is required.
                         </p>
                         <p className="bg-slate-950/60 border border-slate-800/40 p-2.5 rounded-lg text-slate-400 text-[11px] leading-relaxed font-sans">
-                            <strong>Note on Service Continuance:</strong> Upon requesting cancellation, your premium system access limits (up to 3,000 monthly request allocations and Excel batch CSV import log parsers) will remain fully active and viewable until the final day of your current paid billing period. At the end of the paid cycle, your account will automatically downgrade to the limited Free Sandbox tier without incurring further charges.
+                            <strong className="text-slate-200">Note on Service Continuance:</strong> Upon requesting cancellation, your premium system access limits (up to 3,000 monthly request allocations and Excel batch CSV import log parsers) will remain fully active and viewable until the final day of your current paid billing period. At the end of the paid cycle, your account will automatically downgrade to the limited Free Sandbox tier without incurring further charges.
                         </p>
                     </div>
 
@@ -74,23 +75,26 @@ export default function LegalPolicyPage() {
                         </p>
                     </div>
 
-                    {/* FIXED SECTION 5: Explicitly added B2B Statutory Disclaimer */}
-                    <div className="space-y-1.5 font-mono text-xs border-t border-slate-900 pt-4">
-                        <h4 className="text-amber-400 font-bold uppercase text-[11px] tracking-wide">5.0 Statutory Legal Disclaimer</h4>
+                    {/* Section 5 */}
+                    <div className="space-y-1.5 font-mono text-xs">
+                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">5.0 Statutory Legal Disclaimer</h4>
                         <p>
                             All carbon footprint assessments, global grid calculations, and tax exposure models provided by this software are estimates compiled based on the Greenhouse Gas Protocol guidelines and regional carbon taxing parameters.
                         </p>
                         <p className="text-slate-400">
-                            <strong>EcoRoute does not provide official financial, legal, tax, or environmental auditing advice.</strong> Business entities are entirely responsible for verifying their final tax summaries with certified public accountants, legal professionals, or official revenue services (such as SARS) before submitting tax returns or regulatory compliance disclosures. We are not liable for any business disruptions, financial penalties, or logging errors resulting from inaccurate user spreadsheet uploads or telemetry data mismatches.
+                            <strong className="text-slate-200">EcoRoute does not provide official financial, legal, tax, or environmental auditing advice.</strong> Business entities are entirely responsible for verifying their final tax summaries with certified public accountants, legal professionals, or official revenue services (such as SARS) before submitting tax returns or regulatory compliance disclosures. We are not liable for any business disruptions, financial penalties, or logging errors resulting from inaccurate user spreadsheet uploads or telemetry data mismatches.
                         </p>
                     </div>
+
+                    {/* Section 6: Modular Affiliate Rules Sub-Component */}
+                    <ReferralLegalSection />
 
                 </div>
 
                 {/* Footer Copyright Signatures Strip */}
                 <div className="flex justify-between items-center text-[9px] text-slate-600 border-t border-slate-900 pt-4 font-mono uppercase tracking-wider select-none">
                     <span>© {currentYear} STIMS EcoRoute Core. All rights reserved.</span>
-                    <span>Document Version: 2026.2 // Verified Secure</span>
+                    <span>Document Version: 2026.3 // Verified Secure</span>
                 </div>
 
             </div>

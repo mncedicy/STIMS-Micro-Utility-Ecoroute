@@ -5,6 +5,8 @@
 import DashboardViewContainer from './home/DashboardViewContainer';
 import ApiViewContainer from './developer/ApiViewContainer';
 import FleetViewContainer from './fleet/FleetViewContainer';
+import EmissionViewContainer from './emission/EmissionViewContainer';
+import ReferralsViewContainer from './referrals/ReferralsViewContainer';
 import Contact from './contact/Contact';
 import FleetManager from './fleet/asset/FleetAssetManager';
 
@@ -45,9 +47,11 @@ export default function HomePage({
                         subscription={subscription} loadData={loadData} setIsFleetModalOpen={setIsFleetModalOpen}
                     />
                 )}
-
-                {activeViewPage === 'developer_api' && (
-                    <ApiViewContainer user={user} isPremium={isPremium} />
+                {activeViewPage === 'emission_history' && (
+                    <EmissionViewContainer
+                        user={user} customVehicles={customVehicles} rawLogsArray={rawLogsArray}
+                        loadData={loadData} setIsFleetModalOpen={setIsFleetModalOpen} subscription={subscription} errorMsg={errorMsg}
+                    />
                 )}
 
                 {activeViewPage === 'fleet' && (
@@ -55,6 +59,14 @@ export default function HomePage({
                         user={user} customVehicles={customVehicles} rawLogsArray={rawLogsArray}
                         loadData={loadData} setIsFleetModalOpen={setIsFleetModalOpen} subscription={subscription} errorMsg={errorMsg}
                     />
+                )}
+
+                {activeViewPage === 'referrals' && (
+                    <ReferralsViewContainer user={user} isPremium={isPremium} subscription={subscription} errorMsg={errorMsg} />
+                )}
+
+                {activeViewPage === 'developer_api' && (
+                    <ApiViewContainer user={user} isPremium={isPremium} />
                 )}
 
                 <Contact user={user} profile={profile} />

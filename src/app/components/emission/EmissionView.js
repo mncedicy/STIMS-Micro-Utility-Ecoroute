@@ -3,11 +3,13 @@
 'use client';
 
 import React from 'react';
-import FleetHeader from './FleetHeader';
-import FleetList from './asset/FleetList';
+import FleetHeader from './EmissionHeader';
+import CarbonChart from './CarbonChart';
+import LogHistoryManager from './log/LogHistoryManager';
+import CsvUploader from './CsvUploader';
 import { useSubscriptionActions } from '../../hooks/useSubscriptionActions';
 
-export default function FleetView({ user, customVehicles = [], rawLogsArray = [], loadData, setIsFleetModalOpen, subscription }) {
+export default function EmissionView({ user, customVehicles = [], rawLogsArray = [], loadData, setIsFleetModalOpen, subscription }) {
     // Destructure handlePrimaryClickButton from the hook and alias it to upgradePlan
     const { isPending, handlePrimaryClickButton: upgradePlan } = useSubscriptionActions(user, subscription, loadData);
 
@@ -28,24 +30,17 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
         }
     };
 
-    const handleAddNewVehicleClick = () => {
-        setIsFleetModalOpen(true);
-    };
 
 
     return (
         <div className="space-y-6 w-full font-mono animate-fade-in relative">
             {/* Mounted modularized action bar engine header */}
             <FleetHeader
-                freeTierLimitReached={freeTierLimitReached}
                 handleBackupDownload={handleBackupDownload}
-                handleAddNewVehicleClick={handleAddNewVehicleClick}
-                handleUpgradePlanAction={upgradePlan}
-                isPending={isPending}
-                userId={user?.id}
             />
-
-            <FleetList customVehicles={customVehicles} onVehicleDeleted={loadData} isPremium={isPremium} />
+            <CsvUploader onUploadSuccess={() => loadData(true)} />
+            <LogHistoryManager user={user} customVehicles={customVehicles} rawLogsArray={rawLogsArray} />
+            <CarbonChart rawLogsArray={rawLogsArray} />
         </div>
     );
 }
