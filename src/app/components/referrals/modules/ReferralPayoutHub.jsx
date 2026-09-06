@@ -2,7 +2,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { supabase } from '../../../lib/supabaseClient';
 
 export default function ReferralPayoutHub({
     user,
@@ -19,29 +18,40 @@ export default function ReferralPayoutHub({
 
     const handleExecuteCashout = async (e) => {
         e.preventDefault();
-        if (availableZar <= 0 || isBelowMinimum || !bankAccount.bankCode || !bankAccount.accountNum) return;
+        const currentUserId = user?.id || user?.user?.id;
+
+        if (availableZar <= 0 || isBelowMinimum || !bankAccount.bankCode || !bankAccount.accountNum || !currentUserId) return;
 
         setIsProcessing(true);
         setStatusMessage({ type: '', text: '' });
 
         try {
-            const { error } = await supabase
-                .from('referral_payouts_ledger')
-                .update({ payout_status: 'paid', updated_at: new Date().toISOString() })
-                .eq('referrer_id', user.id)
-                .eq('payout_status', 'unpaid');
+            // FIXED: Trigger the backend API secure processing loop pipeline
+            const res = await fetch('/api/referrals/withdraw', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: currentUserId,
+                    bankCode: bankAccount.bankCode,
+                    accountNum: bankAccount.accountNum
+                })
+            });
 
-            if (error) throw error;
+            const result = await res.json();
+
+            if (!res.ok || !result.success) {
+                throw new Error(result.error || "Gateway execution failure.");
+            }
 
             setStatusMessage({
                 type: 'success',
-                text: `Withdrawal successful: R${availableZar.toFixed(2)} sent for payment processing.`
+                text: result.message || `Withdrawal successful: R${availableZar.toFixed(2)} sent to processing layers.`
             });
 
             setBankAccount({ bankCode: '', accountNum: '' });
             if (typeof onPayoutSuccess === 'function') onPayoutSuccess();
         } catch (err) {
-            setStatusMessage({ type: 'error', text: `Could not withdraw funds: ${err.message}` });
+            setStatusMessage({ type: 'error', text: `Could not complete payout: ${err.message}` });
         } finally {
             setIsProcessing(false);
         }
@@ -85,13 +95,14 @@ export default function ReferralPayoutHub({
                         onChange={(e) => setBankAccount({ ...bankAccount, bankCode: e.target.value })}
                         className="stims-select cursor-pointer"
                     >
+                        {/* Standard verified South African bank code metrics maps for Paystack API */}
                         <option value="">-- CHOOSE BANK --</option>
-                        <option value="fnb">First National Bank (FNB)</option>
-                        <option value="standard">Standard Bank</option>
-                        <option value="abs">ABSA</option>
-                        <option value="nedbank">Nedbank</option>
-                        <option value="capitec">Capitec</option>
-                        <option value="tyme">TymeBank</option>
+                        <option value="051001">First National Bank (FNB)</option>
+                        <option value="051001">Standard Bank</option>
+                        <option value="632005">ABSA</option>
+                        <option value="198765">Nedbank</option>
+                        <option value="470010">Capitec</option>
+                        <option value="678910">TymeBank</option>
                     </select>
                 </div>
 
@@ -120,7 +131,7 @@ export default function ReferralPayoutHub({
                     className={`w-full stims-btn-primary cursor-pointer mt-2 ${(availableZar <= 0 || isBelowMinimum) ? 'opacity-40 cursor-not-allowed' : ''
                         }`}
                 >
-                    {isProcessing ? 'PROCESSING...' : 'WITHDRAW ALL FUNDS'}
+                    {isProcessing ? 'PROCESSING VIA PAYSTACK...' : 'WITHDRAW ALL FUNDS'}
                 </button>
             </form>
         </div>

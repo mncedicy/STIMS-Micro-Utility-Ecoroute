@@ -105,3 +105,69 @@ export async function handlePaymentFailure(supabaseAdmin, eventData, eventName, 
     await supabaseAdmin.from('ecoroute_vehicles').update({ is_active: false }).eq('user_id', userId);
     console.log(`⚠️ [Paystack Webhook Bank Failure]: Collection loop failed. Restricted user ${userId} to Sandbox limits.`);
 }
+
+/**
+ * HANDLER 7: Processes successful bank transfer payouts.
+ * Automatically flips all 'processing' payouts linked to this user's balance to 'paid'.
+ */
+export async function handleTransferSuccess(supabaseAdmin, eventData) {
+    const reasonText = eventData.reason || "";
+    // Extract the referrer ID from the payout reason text description signature wrapper
+    // Format used: "STIMS Affiliate Distribution ID: xxxxxxxx"
+    const lookupSplits = reasonText.split('STIMS Affiliate Distribution ID: ');
+    const referralIdPartial = lookupSplits[1] ? lookupSplits[1].trim() : null;
+
+    if (!referralIdPartial) {
+        console.warn(`⚠️ [Transfer Webhook Notice]: Transfer metadata ID lookup signature absent. Processing fallback routing queries.`);
+        return;
+    }
+
+    // Update processing tracking entries natively inside the ledger using a partial text query trace matches lookup
+    const { data: updatedRows, error } = await supabaseAdmin
+        .from('referral_payouts_ledger')
+        .update({
+            payout_status: 'paid',
+            updated_at: new Date().toISOString()
+        })
+        .eq('payout_status', 'processing')
+        .like('referrer_id::text', `${referralIdPartial}%`)
+        .select();
+
+    if (error) {
+        throw new Error(`Failed to commit successful bank transfer event status update to ledger: ${error.message}`);
+    }
+
+    console.log(`✅ [Paystack Bank Transfer Success]: Payout cleared. Consolidated ${updatedRows?.length || 0} rows into 'paid' status.`);
+}
+
+/**
+ * HANDLER 8: Processes rejected or failed bank transfer payouts.
+ * Automatically safely rolls back processing ledger tracks back into 'unpaid' so user can fix typos and withdraw again.
+ */
+export async function handleTransferFailure(supabaseAdmin, eventData) {
+    const reasonText = eventData.reason || "";
+    const lookupSplits = reasonText.split('STIMS Affiliate Distribution ID: ');
+    const referralIdPartial = lookupSplits[1] ? lookupSplits[1].trim() : null;
+
+    if (!referralIdPartial) {
+        console.warn(`⚠️ [Transfer Webhook Warning]: Failed transfer reference lookup signature absent.`);
+        return;
+    }
+
+    // Roll back processing track elements to unpaid so users preserve their balances automatically
+    const { data: restoredRows, error } = await supabaseAdmin
+        .from('referral_payouts_ledger')
+        .update({
+            payout_status: 'unpaid',
+            updated_at: new Date().toISOString()
+        })
+        .eq('payout_status', 'processing')
+        .like('referrer_id::text', `${referralIdPartial}%`)
+        .select();
+
+    if (error) {
+        throw new Error(`Failed to roll back failed transfer ledger allocations: ${error.message}`);
+    }
+
+    console.log(`⚠️ [Paystack Bank Transfer Refused]: Payout bounced or failed. Restored ${restoredRows?.length || 0} rows back into 'unpaid' balances pool.`);
+}

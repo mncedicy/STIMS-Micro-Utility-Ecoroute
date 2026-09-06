@@ -9,7 +9,9 @@ import {
     handleSubscriptionNotRenew,
     handleSubscriptionDisable,
     handlePaymentFailure,
-    handleInvoiceUpdate
+    handleInvoiceUpdate,
+    handleTransferSuccess,
+    handleTransferFailure
 } from './handlers';
 
 export const dynamic = 'force-dynamic';
@@ -48,6 +50,27 @@ export async function POST(req) {
     const event = payload.event;
     const eventData = payload.data;
 
+    // INTERCEPT ASYNCHRONOUS DECOUPLED TRANSFER BALANCES ACTIONS FIRST:
+    if (event === 'transfer.success') {
+        try {
+            await handleTransferSuccess(supabaseAdmin, eventData);
+            return NextResponse.json({ received: true }, { status: 200 });
+        } catch (err) {
+            console.error('🚨 Webhook Transfer Success Execution Error:', err.message);
+            return NextResponse.json({ error: err.message }, { status: 500 });
+        }
+    }
+
+    if (event === 'transfer.failed' || event === 'transfer.reversed') {
+        try {
+            await handleTransferFailure(supabaseAdmin, eventData);
+            return NextResponse.json({ received: true }, { status: 200 });
+        } catch (err) {
+            console.error('🚨 Webhook Transfer Failure Execution Error:', err.message);
+            return NextResponse.json({ error: err.message }, { status: 500 });
+        }
+    }
+
     const AppId = 'ecoroute';
     const email = eventData.customer?.email || eventData.subscription?.customer?.email;
 
@@ -74,19 +97,18 @@ export async function POST(req) {
             .eq('stripe_customer_id', eventData.customer?.customer_code)
             .eq('app_id', AppId)
             .maybeSingle();
-        if (matchedRowByCode) userId = matchedRowByCode.customer_code; // fallback ref
+        if (matchedRowByCode) userId = matchedRowByCode.customer_code;
     }
 
     // 3. PRODUCTION FALLBACK FOR NEW USERS: Query Supabase Auth Schema directly via email match
     if (!userId && email) {
-        const { data: authUserData, error: authErr } = await supabaseAdmin
-            .rpc('get_user_id_by_email', { target_email: email }) // or direct query if permissions allow
+        const { data: authUserData } = await supabaseAdmin
+            .rpc('get_user_id_by_email', { target_email: email })
             .maybeSingle();
 
-        // If you don't have a custom RPC, query auth.users using service role client loop:
         if (!authUserData) {
             const { data: profileMatch } = await supabaseAdmin
-                .from('users') // or profiles table if you replicate auth users there
+                .from('users')
                 .select('id')
                 .eq('email', email)
                 .maybeSingle();
@@ -99,7 +121,6 @@ export async function POST(req) {
     if (!userId) {
         console.error(`🚨 Paystack Webhook Fatal Warning: Could not resolve target user identification context for email: ${email}. Storing payload to ledger for manual audit review.`);
 
-        // Still return 200 so Paystack doesn't retry infinitely, but log partial data to ledger
         await supabaseAdmin.from('billing_transactions_ledger').insert({
             app_id: AppId,
             event_type: event,
