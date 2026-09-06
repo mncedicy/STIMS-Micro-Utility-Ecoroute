@@ -6,7 +6,9 @@ export { handleChargeSuccess, handleSubscriptionCreate, handleSubscriptionNotRen
  * HANDLER 4: Handles the absolute end of the paid month interval.
  */
 export async function handleSubscriptionDisable(supabaseAdmin, eventData, userId, resolvedAppId) {
-    const { error: downgradeError } = await supabaseAdmin
+    const targetSubCode = (eventData.subscription_code || "").trim();
+
+    const { data: updatedSubRows, error: downgradeError } = await supabaseAdmin
         .from('user_subscriptions')
         .update({
             tier: 'free',
@@ -14,23 +16,29 @@ export async function handleSubscriptionDisable(supabaseAdmin, eventData, userId
             cancel_reason: 'Subscription paid term cycle reached its final period boundary limit and completely deactivated.',
             updated_at: new Date().toISOString()
         })
-        .eq('user_id', userId)
-        .eq('app_id', resolvedAppId);
+        .eq('stripe_subscription_id', targetSubCode)
+        .select('user_id');
 
     if (downgradeError) throw new Error(`Database downgrade deallocation error: ${downgradeError.message}`);
 
-    await supabaseAdmin
-        .from('ecoroute_corporate_api_tokens')
-        .update({ usage_limit_cap: 100, updated_at: new Date().toISOString() })
-        .eq('user_id', userId);
+    if (updatedSubRows && updatedSubRows.length > 0) {
+        const trueOwnerId = updatedSubRows[0].user_id;
 
-    const { error: vehicleDeactivateError } = await supabaseAdmin
-        .from('ecoroute_vehicles')
-        .update({ is_active: false })
-        .eq('user_id', userId);
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({ usage_limit_cap: 100, updated_at: new Date().toISOString() })
+            .eq('user_id', trueOwnerId);
 
-    if (vehicleDeactivateError) console.error(`[Webhook Vehicle Deactivation Fault]: ${vehicleDeactivateError.message}`);
-    console.log(`🚫 [Paystack Webhook Deactivation]: Paid term expired. Downgraded user ${userId} to Sandbox limits.`);
+        const { error: vehicleDeactivateError } = await supabaseAdmin
+            .from('ecoroute_vehicles')
+            .update({ is_active: false })
+            .eq('user_id', trueOwnerId);
+
+        if (vehicleDeactivateError) console.error(`[Webhook Vehicle Deactivation Fault]: ${vehicleDeactivateError.message}`);
+        console.log(`🚫 [Paystack Webhook Deactivation]: Paid term expired for signature ${targetSubCode}. Downgraded user ${trueOwnerId} to Sandbox limits.`);
+    } else {
+        console.log(`⚠️ [Paystack Webhook Bypassed]: Bypassed resource downgrade because no active database subscription matched code: ${targetSubCode}`);
+    }
 }
 
 /**
@@ -50,7 +58,7 @@ export async function handleInvoiceUpdate(supabaseAdmin, eventData, userId, reso
         eventData.plan?.email_token ||
         null;
 
-    const { error } = await supabaseAdmin
+    const { data: updatedSubRows, error } = await supabaseAdmin
         .from('user_subscriptions')
         .update({
             status: 'active',
@@ -62,29 +70,36 @@ export async function handleInvoiceUpdate(supabaseAdmin, eventData, userId, reso
             updated_at: new Date().toISOString()
         })
         .eq('user_id', userId)
-        .eq('app_id', resolvedAppId);
+        .eq('app_id', resolvedAppId)
+        .select('user_id');
 
     if (error) throw new Error(`Database invoice renewal extension dropped: ${error.message}`);
 
-    const { error: tokenResetError } = await supabaseAdmin
-        .from('ecoroute_corporate_api_tokens')
-        .update({
-            current_monthly_usage: 0,
-            usage_limit_cap: 3000,
-            last_reset_period: paidAt.split('T'),
-            updated_at: new Date().toISOString()
-        })
-        .eq('user_id', userId);
+    if (updatedSubRows && updatedSubRows.length > 0) {
+        const trueOwnerId = updatedSubRows[0].user_id;
 
-    if (tokenResetError) console.error(`⚠️ Token usage reset on invoice update dropped: ${tokenResetError.message}`);
-    console.log(`🔁 [Paystack Webhook Auto-Renew]: Extended monthly accounting cycle & reset quotas for user ${userId} successfully.`);
+        const { error: tokenResetError } = await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({
+                current_monthly_usage: 0,
+                usage_limit_cap: 3000,
+                last_reset_period: paidAt.split('T')[0],
+                updated_at: new Date().toISOString()
+            })
+            .eq('user_id', trueOwnerId);
+
+        if (tokenResetError) console.error("⚠️ Token usage reset on invoice update dropped:", tokenResetError.message);
+        console.log(`🔁 [Paystack Webhook Auto-Renew]: Extended monthly accounting cycle & reset quotas for user ${trueOwnerId} successfully.`);
+    } else {
+        console.log(`⚠️ [Paystack Invoice Bypass]: Bypassed quota reset because no operational subscription target matched user ${userId}.`);
+    }
 }
 
 /**
  * HANDLER 6: Intercepts recurring payment loop bank collection failures.
  */
 export async function handlePaymentFailure(supabaseAdmin, eventData, eventName, userId, resolvedAppId) {
-    const { error: cancelError } = await supabaseAdmin
+    const { data: updatedSubRows, error: cancelError } = await supabaseAdmin
         .from('user_subscriptions')
         .update({
             status: 'cancelled',
@@ -93,81 +108,26 @@ export async function handlePaymentFailure(supabaseAdmin, eventData, eventName, 
             updated_at: new Date().toISOString()
         })
         .eq('user_id', userId)
-        .eq('app_id', resolvedAppId);
+        .eq('app_id', resolvedAppId)
+        .select('user_id');
 
     if (cancelError) throw new Error(`Database cancellation failure update error: ${cancelError.message}`);
 
-    await supabaseAdmin
-        .from('ecoroute_corporate_api_tokens')
-        .update({ usage_limit_cap: 100, updated_at: new Date().toISOString() })
-        .eq('user_id', userId);
+    if (updatedSubRows && updatedSubRows.length > 0) {
+        const trueOwnerId = updatedSubRows[0].user_id;
 
-    await supabaseAdmin.from('ecoroute_vehicles').update({ is_active: false }).eq('user_id', userId);
-    console.log(`⚠️ [Paystack Webhook Bank Failure]: Collection loop failed. Restricted user ${userId} to Sandbox limits.`);
-}
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({ usage_limit_cap: 100, updated_at: new Date().toISOString() })
+            .eq('user_id', trueOwnerId);
 
-/**
- * HANDLER 7: Processes successful bank transfer payouts.
- * Automatically flips all 'processing' payouts linked to this user's balance to 'paid'.
- */
-export async function handleTransferSuccess(supabaseAdmin, eventData) {
-    const reasonText = eventData.reason || "";
-    // Extract the referrer ID from the payout reason text description signature wrapper
-    // Format used: "STIMS Affiliate Distribution ID: xxxxxxxx"
-    const lookupSplits = reasonText.split('STIMS Affiliate Distribution ID: ');
-    const referralIdPartial = lookupSplits[1] ? lookupSplits[1].trim() : null;
+        await supabaseAdmin
+            .from('ecoroute_vehicles')
+            .update({ is_active: false })
+            .eq('user_id', trueOwnerId);
 
-    if (!referralIdPartial) {
-        console.warn(`⚠️ [Transfer Webhook Notice]: Transfer metadata ID lookup signature absent. Processing fallback routing queries.`);
-        return;
+        console.log(`⚠️ [Paystack Webhook Bank Failure]: Collection loop failed. Restricted user ${trueOwnerId} to Sandbox limits.`);
+    } else {
+        console.log(`⚠️ [Paystack Failure Bypass]: Bypassed sandbox resource drop because no active subscription was found for user ${userId}.`);
     }
-
-    // Update processing tracking entries natively inside the ledger using a partial text query trace matches lookup
-    const { data: updatedRows, error } = await supabaseAdmin
-        .from('referral_payouts_ledger')
-        .update({
-            payout_status: 'paid',
-            updated_at: new Date().toISOString()
-        })
-        .eq('payout_status', 'processing')
-        .like('referrer_id::text', `${referralIdPartial}%`)
-        .select();
-
-    if (error) {
-        throw new Error(`Failed to commit successful bank transfer event status update to ledger: ${error.message}`);
-    }
-
-    console.log(`✅ [Paystack Bank Transfer Success]: Payout cleared. Consolidated ${updatedRows?.length || 0} rows into 'paid' status.`);
-}
-
-/**
- * HANDLER 8: Processes rejected or failed bank transfer payouts.
- * Automatically safely rolls back processing ledger tracks back into 'unpaid' so user can fix typos and withdraw again.
- */
-export async function handleTransferFailure(supabaseAdmin, eventData) {
-    const reasonText = eventData.reason || "";
-    const lookupSplits = reasonText.split('STIMS Affiliate Distribution ID: ');
-    const referralIdPartial = lookupSplits[1] ? lookupSplits[1].trim() : null;
-
-    if (!referralIdPartial) {
-        console.warn(`⚠️ [Transfer Webhook Warning]: Failed transfer reference lookup signature absent.`);
-        return;
-    }
-
-    // Roll back processing track elements to unpaid so users preserve their balances automatically
-    const { data: restoredRows, error } = await supabaseAdmin
-        .from('referral_payouts_ledger')
-        .update({
-            payout_status: 'unpaid',
-            updated_at: new Date().toISOString()
-        })
-        .eq('payout_status', 'processing')
-        .like('referrer_id::text', `${referralIdPartial}%`)
-        .select();
-
-    if (error) {
-        throw new Error(`Failed to roll back failed transfer ledger allocations: ${error.message}`);
-    }
-
-    console.log(`⚠️ [Paystack Bank Transfer Refused]: Payout bounced or failed. Restored ${restoredRows?.length || 0} rows back into 'unpaid' balances pool.`);
 }

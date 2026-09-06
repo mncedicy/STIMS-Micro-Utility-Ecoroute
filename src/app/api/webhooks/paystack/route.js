@@ -3,16 +3,21 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+// Update the import top rows inside src/app/api/webhooks/paystack/route.js:
 import {
     handleChargeSuccess,
     handleSubscriptionCreate,
     handleSubscriptionNotRenew,
     handleSubscriptionDisable,
     handlePaymentFailure,
-    handleInvoiceUpdate,
+    handleInvoiceUpdate
+} from './handlers';
+
+import {
     handleTransferSuccess,
     handleTransferFailure
-} from './handlers';
+} from './transfer-handlers'; // Linked to your brand new standalone file
+
 
 export const dynamic = 'force-dynamic';
 
