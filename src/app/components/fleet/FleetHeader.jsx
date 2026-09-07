@@ -1,3 +1,4 @@
+// src/app/components/fleet/FleetHeader.jsx
 'use client';
 
 import React, { useState } from 'react';
@@ -8,9 +9,14 @@ export default function FleetHeader({
     handleBackupDownload,
     handleAddNewVehicleClick,
     handleUpgradePlanAction,
-    isPending, userId
+    isPending,
+    userId,
+    customVehicles = []
 }) {
     const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
+
+    // Evaluate empty state constraint conditions cleanly
+    const isFleetEmpty = customVehicles.length === 0;
 
     const onAddVehicleClickInternal = () => {
         if (freeTierLimitReached) {
@@ -34,15 +40,25 @@ export default function FleetHeader({
                 </div>
                 <div className="flex items-center space-x-2 shrink-0">
 
+                    {/* FIXED: Dynamic state toggles disable download link anchor actions instantly if fleet registry is empty */}
                     <a
-                        href={`/api/export/vehicles?userId=${userId || ''}`} download
-                        className="border border-emerald-800 text-emerald-400 font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md transition-all bg-slate-950 hover:border-emerald-600/50 stims-hover-glow text-center inline-block cursor-pointer"                    >
-                        💾 Vehicle List</a>
+                        href={isFleetEmpty ? undefined : `/api/export/vehicles?userId=${userId || ''}`}
+                        download={!isFleetEmpty}
+                        aria-disabled={isFleetEmpty}
+                        className={`border font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md transition-all text-center inline-block ${isFleetEmpty
+                            ? 'border-slate-900 text-slate-600 bg-slate-950/40 cursor-not-allowed pointer-events-none select-none opacity-60'
+                            : 'border-emerald-800 text-emerald-400 bg-slate-950 hover:border-emerald-600/50 stims-hover-glow cursor-pointer'
+                            }`}
+                    >
+                        💾 Vehicle List
+                    </a>
 
                     <button
                         type="button"
                         onClick={onAddVehicleClickInternal}
-                        className={`border border-transparent text-white font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md transition-all stims-hover-glow cursor-pointer ${freeTierLimitReached ? 'bg-slate-800 text-slate-500 border-slate-700' : 'bg-blue-600'
+                        className={`border border-transparent text-white font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md transition-all stims-hover-glow cursor-pointer ${freeTierLimitReached
+                            ? 'bg-slate-800 text-slate-500 border-slate-700'
+                            : 'bg-blue-600'
                             }`}
                     >
                         {freeTierLimitReached ? '🔒 Limit Reached' : '[+] Add New Vehicle'}

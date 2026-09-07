@@ -61,7 +61,10 @@ export function calculateRoute({ coordinates_string, vehicleRecord, usageCap, ne
     const actualDistanceKm = calculateSequentialGoogleHaversine(coordinates_string);
     const carbonMultiplier = parseFloat(vehicleRecord.carbon_multiplier || 0.230);
     const actualCarbonKg = actualDistanceKm * carbonMultiplier;
-    const actualFuelLitres = actualDistanceKm * 0.115;
+    // 1. Calculate Liters consumed per 100 Kilometres from MPG
+    const l100km = vehicleRecord.combined_mpg
+        ? (235.215 / parseFloat(vehicleRecord.combined_mpg)) : 5.0;
+    const actualFuelLitres = actualDistanceKm * (l100km / 100.0);
 
     const responsePayload = {
         success: true,

@@ -19,7 +19,7 @@ export default function Footer({ onNavigateViewPage }) {
 
     return (
         <footer className="w-full border-t border-slate-900 bg-slate-950/20 py-8 px-4 mt-auto relative z-10 font-mono text-[10px] text-slate-500 antialiased select-none">
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="max-w-6xl mx-auto space-y-6">
 
                 {/* Upper Column Links Grid Layout Track */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pb-6 border-b border-slate-900/60 text-left">

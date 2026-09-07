@@ -26,6 +26,15 @@ export default function TransportAuditDetails({ category, log, meta, formatDurat
                         <span className="text-blue-400 font-bold">{formatDuration(meta.totalDurationSeconds)}</span>
                     </div>
                 )}
+                <div className="flex justify-between border-b border-slate-900 pb-1">
+                    <span>Emissions Intensity:</span>
+                    <span className="text-slate-300 font-bold">{meta.multiplierUsed} kg CO₂/km</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-900 pb-1">
+                    <span>Projected Fuel:</span>
+                    <span className="text-amber-400 font-bold">{meta.fuel_litres} Litres</span>
+                </div>
+
                 {renderTrips(meta.tripLegsArray, meta.waypointsArray)}
             </div>
         );

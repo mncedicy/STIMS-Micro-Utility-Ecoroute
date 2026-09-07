@@ -76,7 +76,7 @@ export async function calculateVehicleEmissions(
     // 2. Fetch the user fleet registration asset row directly
     const { data: userVehicle, error: userVehicleError } = await supabase
         .from('ecoroute_vehicles')
-        .select('id, make, model, year, fuel_type, carbon_multiplier')
+        .select('*')
         .eq('id', vehicleId)
         .maybeSingle();
 
@@ -85,6 +85,10 @@ export async function calculateVehicleEmissions(
             `Registered user vehicle profile entry not found (Asset Track Trace ID: ${vehicleId})`
         );
     }
+    // 1. Calculate Liters consumed per 100 Kilometres from MPG
+    const l100km = userVehicle.combined_mpg
+        ? (235.215 / parseFloat(userVehicle.combined_mpg)) : 5.0;
+    const actualFuelLitres = rawDistance * (l100km / 100.0);
 
     let carbonKg = 0;
     const metadata = {
@@ -95,6 +99,8 @@ export async function calculateVehicleEmissions(
         totalDurationSeconds: osrmContext?.totalDurationSeconds || 0,
         tripLegsArray: osrmContext?.tripLegsArray || [],
         waypointsArray: osrmContext?.waypointsArray || [],
+        fuel_litres: parseFloat(actualFuelLitres.toFixed(2)),
+        l100km: parseFloat(l100km.toFixed(2)),
     };
 
     const multiplier = parseFloat(userVehicle.carbon_multiplier);

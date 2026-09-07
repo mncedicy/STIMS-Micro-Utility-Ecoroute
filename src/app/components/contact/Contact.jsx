@@ -50,7 +50,7 @@ export default function Contact({ user, profile }) {
     };
 
     return (
-        <section id="contact" className="w-full max-w-4xl mx-auto px-0 py-12 relative z-10 border-t border-slate-900 font-mono text-xs animate-fade-in">
+        <section id="contact" className="w-full max-w-6xl mx-auto px-0 py-12 relative z-10 border-t border-slate-900 font-mono text-xs animate-fade-in">
             <ContactHeader />
 
             <div className="bg-slate-900/40 border border-slate-900 rounded-xl p-6 md:p-8 backdrop-blur-sm w-full mx-auto shadow-sm transition-all duration-300 ease-out stims-hover-glow">

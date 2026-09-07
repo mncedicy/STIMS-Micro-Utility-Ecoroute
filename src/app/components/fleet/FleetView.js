@@ -43,6 +43,7 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
                 handleUpgradePlanAction={upgradePlan}
                 isPending={isPending}
                 userId={user?.id}
+                customVehicles={customVehicles}
             />
 
             <FleetList customVehicles={customVehicles} onVehicleDeleted={loadData} isPremium={isPremium} />

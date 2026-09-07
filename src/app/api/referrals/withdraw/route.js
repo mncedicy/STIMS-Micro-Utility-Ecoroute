@@ -63,6 +63,8 @@ export async function POST(req) {
 
         if (initError) throw new Error(`Could not generate withdrawal trace logs: ${initError.message}`);
 
+
+        return NextResponse.json({ success: false, error: "Withdrawal failed to initialize." }, { status: 500 });
         // =========================================================================
         // STEP B: MOCK INTERCEPTOR FOR LOCAL ENVIRONMENT TEST SUITE RUNS
         // =========================================================================
