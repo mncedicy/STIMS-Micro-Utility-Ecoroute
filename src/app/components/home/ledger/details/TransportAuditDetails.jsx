@@ -1,5 +1,4 @@
 // src/app/components/home/ledger/details/TransportAuditDetails.jsx
-
 'use client';
 
 import React from 'react';
@@ -28,7 +27,7 @@ export default function TransportAuditDetails({ category, log, meta, formatDurat
                 )}
                 <div className="flex justify-between border-b border-slate-900 pb-1">
                     <span>Emissions Intensity:</span>
-                    <span className="text-slate-300 font-bold">{meta.multiplierUsed} kg CO₂/km</span>
+                    <span className="text-slate-300 font-bold">{meta.calculatedEmissionsIntensity} kg CO₂/km</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-900 pb-1">
                     <span>Projected Fuel:</span>
@@ -55,6 +54,20 @@ export default function TransportAuditDetails({ category, log, meta, formatDurat
                         {log.input_distance || meta.inputDistance} {log.input_unit || meta.inputUnit || 'km'}
                     </span>
                 </div>
+                <div className="flex justify-between border-b border-slate-900 pb-1">
+                    <span>Transit Mode:</span>
+                    <span className="text-white font-bold capitalize">
+                        {(log.shipping_mode || meta.shippingModeApplied || 'Standard').replace('_', ' ')}
+                    </span>
+                </div>
+                {(meta.emissionsFactorPerTonneKm || log.raw_payload?.metadata?.emissionsFactorPerTonneKm) && (
+                    <div className="flex justify-between border-b border-slate-900 pb-1">
+                        <span>Emissions Factor:</span>
+                        <span className="text-blue-400 font-bold">
+                            {meta.emissionsFactorPerTonneKm || log.raw_payload?.metadata?.emissionsFactorPerTonneKm} kg CO₂/t-km
+                        </span>
+                    </div>
+                )}
                 {meta.totalDurationSeconds > 0 && (
                     <div className="flex justify-between border-b border-slate-900 pb-1">
                         <span>Estimated Duration:</span>
@@ -70,11 +83,19 @@ export default function TransportAuditDetails({ category, log, meta, formatDurat
         return (
             <div className="space-y-1.5 animate-fade-in">
                 <div className="flex flex-col border-b border-slate-900 pb-1 space-y-0.5">
-                    <span className="text-slate-500">Flight Sector Route Path:</span>
+                    <span className="text-slate-400 font-medium">Flight Sector Route Path:</span>
                     <span className="text-blue-400 font-bold uppercase tracking-wide leading-tight">
-                        ✈️ {meta.route_display || `${log.origin_iata} - ${log.dest_iata}`}
+                        ✈ {meta.route_display || `${log.origin_iata} - ${log.dest_iata}`}
                     </span>
                 </div>
+
+                <div className="flex justify-between border-b border-slate-900 pb-1">
+                    <span>Flight Seating Class:</span>
+                    <span className="text-amber-400 font-bold capitalize">
+                        {(meta.flight_class || log.raw_payload?.metadata?.flight_class || 'Economy').replace('_', ' ')}
+                    </span>
+                </div>
+
                 {meta.distanceKm && (
                     <div className="flex justify-between border-b border-slate-900 pb-1">
                         <span>Spherical Distance:</span>

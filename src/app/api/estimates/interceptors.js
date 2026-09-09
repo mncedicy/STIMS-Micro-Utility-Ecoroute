@@ -14,29 +14,35 @@ export async function handleSpecialCategoryCalculations({ cleanType, body, userI
             };
         }
 
-        const payload = routeResult.responsePayload?.route_projection || {};
+        const activePayload = routeResult.responsePayload?.route_projection || {};
         const specs = routeResult.responsePayload?.vehicle_specs || {};
+        const resolvedDistance = routeResult.actualDistanceKm || activePayload.actual_distance_km || 0;
 
         const structuredRouteLog = {
             id: 'route_matrix_direct',
             category_display: 'ROUTE CHECKER',
-            carbon_kg: routeResult.actualCarbonKg,
-            carbon_mt: (routeResult.actualCarbonKg / 1000).toFixed(4),
-            carbon_lb: (routeResult.actualCarbonKg * 2.20462).toFixed(2),
-            carbon_g: (routeResult.actualCarbonKg * 1000),
-            input_distance: routeResult.actualDistanceKm,
+            carbon_kg: routeResult.actualCarbonKg || activePayload.projected_carbon_kg || 0,
+            carbon_mt: parseFloat(((routeResult.actualCarbonKg || 0) / 1000).toFixed(4)),
+            carbon_lb: parseFloat(((routeResult.actualCarbonKg || 0) * 2.20462).toFixed(2)),
+            carbon_g: parseFloat(((routeResult.actualCarbonKg || 0) * 1000).toFixed(2)),
+            input_distance: resolvedDistance,
             input_unit: 'km',
             raw_payload: {
                 metadata: {
                     sequencePoints: body.coordinates_string.length,
-                    routing_engine: 'Haversine Matrix snapped via OSRM Engine',
-                    projectedFuelLitres: payload.projected_fuel_litres || (routeResult.actualDistanceKm * 0.115).toFixed(2),
-                    vehicleDescription: specs.description || 'Fleet Asset Truck',
-                    carbonMultiplierApplied: specs.carbon_multiplier || 0.230,
+                    routing_engine: activePayload.routing_engine || 'Haversine Matrix snapped via OSRM Engine',
+                    projectedFuelLitres: activePayload.projected_fuel_litres || 0,
+                    vehicleDescription: specs.description || 'Honda Accord (2010)',
+                    carbonMultiplierApplied: specs.carbon_multiplier || 0.220886,
                     coordinatesArray: body.coordinates_string,
+
+                    // Unified both camelCase and snake_case properties to guarantee unbreakable frontend layout binding
                     totalDurationSeconds: body.osrm_total_duration || 0,
                     tripLegsArray: body.osrm_legs_data || [],
-                    waypointsArray: body.osrm_waypoints_data || []
+                    waypointsArray: body.osrm_waypoints_data || [],
+                    osrm_total_duration: body.osrm_total_duration || 0,
+                    osrm_legs_data: body.osrm_legs_data || [],
+                    osrm_waypoints_data: body.osrm_waypoints_data || []
                 }
             }
         };
@@ -44,7 +50,10 @@ export async function handleSpecialCategoryCalculations({ cleanType, body, userI
     }
 
     if (cleanType === 'tax') {
-        const taxResult = await calculateTax(userId, body.start_date, body.end_date);
+        const cleanStartDate = body.start_date ? body.start_date.toString().substring(0, 10) : null;
+        const cleanEndDate = body.end_date ? body.end_date.toString().substring(0, 10) : null;
+
+        const taxResult = await calculateTax(userId, cleanStartDate, cleanEndDate);
         if (taxResult.error) {
             return {
                 intercepted: true,
@@ -52,21 +61,25 @@ export async function handleSpecialCategoryCalculations({ cleanType, body, userI
             };
         }
 
+        const activeLedger = taxResult.responsePayload?.sars_tax_compliance_ledger || {};
+        const summaryMetrics = taxResult.responsePayload?.summary_metrics || {};
+
         const structuredTaxLog = {
             id: 'tax_ledger_direct',
             category_display: 'CARBON TAX REPORT',
-            carbon_kg: 1680.00,
-            carbon_mt: 1.6800,
-            carbon_lb: (1680 * 2.20462).toFixed(2),
-            carbon_g: (1680 * 1000),
+            carbon_kg: summaryMetrics.total_emissions_co2_kg || 0,
+            carbon_mt: summaryMetrics.total_emissions_co2_mt || 0,
+            carbon_lb: parseFloat(((summaryMetrics.total_emissions_co2_kg || 0) * 2.20462).toFixed(2)),
+            carbon_g: parseFloat(((summaryMetrics.total_emissions_co2_kg || 0) * 1000).toFixed(2)),
             raw_payload: {
                 metadata: {
                     isTaxEngineOutput: true,
-                    statutoryBaseRate: 159.00,
-                    freeBasicExemption: "60%",
-                    taxableEmissionsVolumeMt: 1.6800,
-                    totalAccruedLiabilityZar: 319.20,
-                    recordsCompiled: taxResult.responsePayload?.total_records_analyzed || 0
+                    statutoryBaseRate: activeLedger.statutory_base_rate_zar_per_tonne || 190.00,
+                    freeBasicExemption: activeLedger.free_basic_allowance_exemption_percentage || "60%",
+                    taxableEmissionsVolumeMt: activeLedger.taxable_emissions_volume_mt || 0,
+                    totalAccruedLiabilityZar: activeLedger.total_accrued_liability_zar || 0,
+                    recordsCompiled: taxResult.responsePayload?.total_records_analyzed || 0,
+                    filterApplied: taxResult.responsePayload?.filter_applied || {}
                 }
             }
         };

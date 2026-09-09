@@ -1,9 +1,9 @@
-// /src/app/actions/email.js
 "use server";
 
 import { createClient } from '@supabase/supabase-js';
 import { generateComplianceEmailHtml } from '../utils/emailTemplateEngine';
 import { sendSystemNotification } from '../utils/emailEngine';
+import { buildCompliancePdfBuffer } from '../api/export/pdf/pdfGeneratorService';
 
 // Safe administrative bypass client instance
 const supabaseAdmin = createClient(
@@ -102,18 +102,20 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
             displayId
         });
 
-        // Prepare attachments array for the unified engine if base64 data exists
-        let attachments = [];
-        const rawBase64DataString = payloadEnvelope?.data;
-        if (rawBase64DataString) {
-            attachments = [
-                {
-                    filename: `ecoroute_compliance_report_${displayId}.pdf`,
-                    content: Buffer.from(rawBase64DataString, 'base64'),
-                    contentType: 'application/pdf'
-                }
-            ];
-        }
+        // NATIVE SERVER GENERATION: Compile PDF buffer directly on the server to avoid Vercel Serverless payload limits
+        const subtitleRangeContext = startDate && endDate
+            ? `AUDIT FILTER RANGE: ${startDate} TO ${endDate}`
+            : 'CONSOLIDATED ENTERPRISE HISTORICAL COMPLIANCE RECORD SUMMARY';
+
+        const pdfArrayBuffer = await buildCompliancePdfBuffer(profile, logs || [], subtitleRangeContext);
+
+        const attachments = [
+            {
+                filename: `ecoroute_compliance_report_${displayId}.pdf`,
+                content: Buffer.from(pdfArrayBuffer),
+                contentType: 'application/pdf'
+            }
+        ];
 
         // Delegate dispatch through the multi-provider failover engine module
         const dispatchResult = await sendSystemNotification({

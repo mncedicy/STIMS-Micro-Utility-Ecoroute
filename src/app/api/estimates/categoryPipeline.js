@@ -2,7 +2,9 @@
 
 import { calculateFlightEmissions } from '@/app/utils/flightCalculator';
 import { calculateVehicleEmissions } from '@/app/utils/vehicleCalculator';
-import { ELECTRICITY_GRID_FACTORS, GAS_EMISSION_FACTORS } from '@/app/config/emissionFactors';
+import { calculateShippingEmissions } from '@/app/utils/shippingCalculator';
+import { calculateGasEmissions } from '@/app/utils/gasCalculator';
+import { calculateElectricityEmissions } from '@/app/utils/electricityCalculator'; // Newly extracted calculation utility module
 
 export async function processCategoryEmissions(cleanType, body, tokenFallback = '') {
     let calculatedKg = 0;
@@ -10,7 +12,12 @@ export async function processCategoryEmissions(cleanType, body, tokenFallback = 
 
     switch (cleanType) {
         case 'flight': {
-            const flightResult = await calculateFlightEmissions(body.origin_iata, body.dest_iata, body.passengers);
+            const flightResult = await calculateFlightEmissions(
+                body.origin_iata,
+                body.dest_iata,
+                body.passengers,
+                body.flight_class
+            );
             return { calculatedKg: flightResult.carbonKg, metadataLog: { ...metadataLog, ...flightResult.metadata } };
         }
 
@@ -42,20 +49,19 @@ export async function processCategoryEmissions(cleanType, body, tokenFallback = 
         }
 
         case 'shipping': {
-            const weightVal = parseFloat(body.cargo_weight);
-            const distanceVal = parseFloat(body.distance);
-            let tonnes = body.mass_unit?.toLowerCase() === 'lbs' ? weightVal * 0.000453592 : body.mass_unit?.toLowerCase() === 'kg' ? weightVal / 1000 : weightVal;
-            const km = body.unit?.toLowerCase() === 'miles' ? distanceVal * 1.60934 : distanceVal;
-
-            calculatedKg = tonnes * km * 0.12;
+            const shippingResult = calculateShippingEmissions(
+                body.cargo_weight,
+                body.distance,
+                body.mass_unit,
+                body.unit,
+                body.shipping_mode
+            );
 
             return {
-                calculatedKg,
+                calculatedKg: shippingResult.carbonKg,
                 metadataLog: {
                     ...metadataLog,
-                    tonneKilometers: parseFloat((tonnes * km).toFixed(2)),
-                    inputWeight: weightVal,
-                    inputDistance: distanceVal,
+                    ...shippingResult.metadata,
                     totalDurationSeconds: body.osrm_total_duration || 0,
                     tripLegsArray: body.osrm_legs_data || [],
                     waypointsArray: body.osrm_waypoints_data || []
@@ -64,22 +70,42 @@ export async function processCategoryEmissions(cleanType, body, tokenFallback = 
         }
 
         case 'electricity': {
-            const kwhVal = parseFloat(body.kwh);
-            if (isNaN(kwhVal) || kwhVal < 0) throw new Error('Invalid electricity energy consumption input values.');
-            const region = body.country_code?.toUpperCase() || 'ZA';
-            const factor = ELECTRICITY_GRID_FACTORS[region] || ELECTRICITY_GRID_FACTORS.GLOBAL_AVERAGE;
+            // Business logic decoupled and handed off to individual calculations utility layers
+            const electricityResult = calculateElectricityEmissions(
+                body.kwh,
+                body.country_code,
+                body.power_source
+            );
 
-            calculatedKg = kwhVal * factor;
-            return { calculatedKg, metadataLog: { ...metadataLog, inputKwh: kwhVal, countryTarget: region, gridFactorApplied: factor } };
+            return {
+                calculatedKg: electricityResult.carbonKg,
+                metadataLog: {
+                    ...metadataLog,
+                    ...electricityResult.metadata,
+                    totalDurationSeconds: body.osrm_total_duration || 0,
+                    tripLegsArray: body.osrm_legs_data || [],
+                    waypointsArray: body.osrm_waypoints_data || []
+                }
+            };
         }
 
         case 'gas': {
-            const qty = parseFloat(body.quantity);
-            const type = body.gas_type?.toUpperCase();
-            const unit = body.gas_unit?.toLowerCase();
-            const factor = GAS_EMISSION_FACTORS[type]?.[unit] || 0;
+            const gasResult = calculateGasEmissions(
+                body.quantity,
+                body.gas_type,
+                body.gas_unit
+            );
 
-            return { calculatedKg: qty * factor, metadataLog: { ...metadataLog, inputQuantity: qty, gasClassification: type, combustionFactorApplied: factor } };
+            return {
+                calculatedKg: gasResult.carbonKg,
+                metadataLog: {
+                    ...metadataLog,
+                    ...gasResult.metadata,
+                    totalDurationSeconds: body.osrm_total_duration || 0,
+                    tripLegsArray: body.osrm_legs_data || [],
+                    waypointsArray: body.osrm_waypoints_data || []
+                }
+            };
         }
 
         default:

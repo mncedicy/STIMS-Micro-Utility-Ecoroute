@@ -18,7 +18,6 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
         ? body.cost_center.toString().trim().substring(0, 100)
         : 'Unassigned';
 
-    // FIXED: Appends captured OSRM road geometry metrics into your standard saved database log entry payload structures
     const finalMetadataBlock = {
         ...metadataLog,
         userAssignedDate: resolvedEmissionDate,
@@ -34,7 +33,7 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
         ...finalMetadataBlock
     });
 
-    // 1. Write transactional log
+    // 1. Write transactional audit log record entry
     const { data: dbLogEntry, error: dbWriteError } = await supabaseAdmin
         .from('ecoroute_emissions_logs')
         .insert({
@@ -52,6 +51,8 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
             passengers_count: cleanType === 'flight' ? parseInt(body.passengers, 10) : null,
             cargo_weight: cleanType === 'shipping' ? parseFloat(body.cargo_weight) : null,
             mass_unit: cleanType === 'shipping' ? body.mass_unit : null,
+            // Maps shipping mechanics when routing freight, falls back to capturing power mix sources if active category is electricity
+            shipping_mode: cleanType === 'shipping' ? (body.shipping_mode || metadataLog?.shipping_mode || 'standard') : cleanType === 'electricity' ? (body.power_source || 'utility_grid') : null,
             energy_kwh: cleanType === 'electricity' ? parseFloat(body.kwh) : null,
             country_code: cleanType === 'electricity' ? body.country_code?.toUpperCase() : null,
             gas_quantity: cleanType === 'gas' ? parseFloat(body.quantity) : null,
@@ -75,7 +76,7 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
 
     if (dbWriteError) throw new Error(`Database policy restriction: ${dbWriteError.message}`);
 
-    // 2. Compute Tax Ledger Accruals
+    // 2. Compute Tax Ledger Accruals (Phase 2 SARS Regime Calculations)
     const taxRatePerTon = parseFloat(appMetaRes.data?.carbon_tax_rate_zar_per_tonne || 190.00);
     const freeAllowancePercent = parseFloat(appMetaRes.data?.carbon_tax_free_allowance_percentage || 60.00);
     const incrementalTonnes = parseFloat(conversionsPayload.carbon_mt || 0);
@@ -106,7 +107,7 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
         .select()
         .single();
 
-    // 3. Dispatch Notification Webhooks
+    // 3. Dispatch Corporate Notification Webhooks
     try {
         const usageCap = updatedTokenRecord?.usage_limit_cap || 100;
         if ((nextUsageCountValue / usageCap) >= 0.95 && (currentUsageCount / usageCap) < 0.95) {

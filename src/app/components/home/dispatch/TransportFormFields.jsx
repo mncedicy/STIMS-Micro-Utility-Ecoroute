@@ -1,5 +1,4 @@
 // src/app/components/home/dispatch/TransportFormFields.jsx
-
 'use client';
 
 import React from 'react';
@@ -9,7 +8,6 @@ import VehicleFields from './VehicleFields';
 import ShippingFields from './ShippingFields';
 import FlightFields from './FlightFields';
 
-// FIXED PORTAL ROUTING: Disabling SSR completely skips Server handshake token compilation errors entirely
 const MapCoordinatePicker = dynamic(
     () => import('./MapCoordinatePicker'),
     {
@@ -27,11 +25,11 @@ export default function TransportFormFields({
     weight, setWeight, weightUnit, setWeightUnit, depAirport, setDepAirport, destAirport, setDestAirport, passengers, setPassengers,
     originAirportsList = [], destAirportsList = [], onSearchAirports, searchLoading, routeCoordinates = [], setRouteCoordinates,
     taxStartDate, setTaxStartDate, taxEndDate, setTaxEndDate, maxDateBoundary,
-    setOsrmTotalDuration, setOsrmLegsData, setOsrmWaypointsData, openDropdownKey, setOpenDropdownKey
+    setOsrmTotalDuration, setOsrmLegsData, setOsrmWaypointsData, openDropdownKey, setOpenDropdownKey,
+    shippingMode, setShippingMode,
+    flightClass, setFlightClass
 }) {
     if (!['vehicle', 'shipping', 'flight', 'route', 'tax'].includes(activeTab)) return null;
-
-
 
     return (
         <>
@@ -53,14 +51,29 @@ export default function TransportFormFields({
                         distance={distance} setDistance={setDistance} unit={unit} setUnit={setUnit}
                         setOsrmTotalDuration={setOsrmTotalDuration} setOsrmLegsData={setOsrmLegsData} setOsrmWaypointsData={setOsrmWaypointsData}
                     />
-                    <ShippingFields weight={weight} setWeight={setWeight} weightUnit={weightUnit} setWeightUnit={setWeightUnit} />
+                    <ShippingFields
+                        weight={weight}
+                        setWeight={setWeight}
+                        weightUnit={weightUnit}
+                        setWeightUnit={setWeightUnit}
+                        shippingMode={shippingMode}
+                        setShippingMode={setShippingMode}
+                    />
                 </div>
             )}
 
             {activeTab === 'flight' && (
                 <div className="space-y-3 animate-fade-in">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1">📊 Commercial aviation sector passenger tracker</p>
-                    <FlightFields depAirport={depAirport} setDepAirport={setDepAirport} destAirport={destAirport} setDestAirport={setDestAirport} passengers={passengers} setPassengers={setPassengers} openDropdownKey={openDropdownKey} setOpenDropdownKey={setOpenDropdownKey} originAirportsList={originAirportsList} destAirportsList={destAirportsList} onSearchAirports={onSearchAirports} searchLoading={searchLoading} />
+                    <FlightFields
+                        depAirport={depAirport} setDepAirport={setDepAirport}
+                        destAirport={destAirport} setDestAirport={setDestAirport}
+                        passengers={passengers} setPassengers={setPassengers}
+                        openDropdownKey={openDropdownKey} setOpenDropdownKey={setOpenDropdownKey}
+                        originAirportsList={originAirportsList} destAirportsList={destAirportsList}
+                        onSearchAirports={onSearchAirports} searchLoading={searchLoading}
+                        flightClass={flightClass} setFlightClass={setFlightClass}
+                    />
                 </div>
             )}
 

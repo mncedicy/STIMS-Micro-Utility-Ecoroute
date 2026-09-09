@@ -1,5 +1,4 @@
 // src/app/components/home/dispatch/FlightFields.jsx
-
 'use client';
 
 import React from 'react';
@@ -17,7 +16,9 @@ export default function FlightFields({
     originAirportsList,
     destAirportsList,
     onSearchAirports,
-    searchLoading
+    searchLoading,
+    flightClass,       // Injected advanced variable context state properties
+    setFlightClass     // Bound seamlessly to top tier form handler states
 }) {
     const cleanAirportName = (name = '') => {
         return name
@@ -82,16 +83,32 @@ export default function FlightFields({
                     />
                 </div>
             </div>
-            <div>
-                <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider font-bold">PASSENGERS COUNT</label>
-                <input
-                    type="number"
-                    min={1}
-                    value={passengers}
-                    onChange={(e) => setPassengers(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
-                    required
-                />
+
+            {/* Injected Granular Layout Metrics Input Matrix Row */}
+            <div className="grid grid-cols-2 gap-2 items-end">
+                <div>
+                    <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider font-bold">PASSENGERS COUNT</label>
+                    <input
+                        type="number"
+                        min={1}
+                        value={passengers}
+                        onChange={(e) => setPassengers(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono text-xs h-[34px]"
+                        required
+                    />
+                </div>
+                <div>
+                    <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider font-bold">FLIGHT SEATING CLASS</label>
+                    <select
+                        value={flightClass || 'economy'}
+                        onChange={(e) => setFlightClass(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer font-mono text-xs h-[34px]"
+                    >
+                        <option value="economy">Economy Class Standard</option>
+                        <option value="business">Business Class Premium (2.5x)</option>
+                        <option value="first">First Class VIP Suite (4.0x)</option>
+                    </select>
+                </div>
             </div>
         </div>
     );

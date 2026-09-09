@@ -88,7 +88,7 @@ export async function calculateVehicleEmissions(
     // 1. Calculate Liters consumed per 100 Kilometres from MPG
     const l100km = userVehicle.combined_mpg
         ? (235.215 / parseFloat(userVehicle.combined_mpg)) : 5.0;
-    const actualFuelLitres = rawDistance * (l100km / 100.0);
+    const actualFuelLitres = distanceKm * (l100km / 100.0);
 
     let carbonKg = 0;
     const metadata = {
@@ -106,31 +106,40 @@ export async function calculateVehicleEmissions(
     const multiplier = parseFloat(userVehicle.carbon_multiplier);
     const fuelType = (userVehicle.fuel_type || '').toLowerCase();
 
-    // 3. Priority 1: Check for explicit carbon multiplier on the vehicle record
-    if (!isNaN(multiplier) && multiplier > 0) {
+    // 3. High-Precision Fuel Chemistry Calculation Matrix
+    if (fuelType.includes('electric') || fuelType === 'ev') {
+        carbonKg = 0; // Tailpipe zero-emissions default
+        metadata.calculationMethod = 'PURE_ELECTRIC_ZERO_EMISSION';
+        metadata.fuelTypeDetected = 'electric';
+    }
+    else if (fuelType.includes('gasoline') || fuelType.includes('petrol') || fuelType.includes('regular')) {
+        const petrolFactor = 2.31; // Standard kg CO2 per liter for gasoline/petrol
+        carbonKg = actualFuelLitres * petrolFactor;
+        metadata.calculationMethod = 'FUEL_CHEMISTRY_PETROL';
+        metadata.emissionsFactorPerLitre = petrolFactor;
+        metadata.fuelTypeDetected = 'petrol';
+    }
+    else if (fuelType.includes('diesel')) {
+        const dieselFactor = 2.68; // Standard kg CO2 per liter for diesel
+        carbonKg = actualFuelLitres * dieselFactor;
+        metadata.calculationMethod = 'FUEL_CHEMISTRY_DIESEL';
+        metadata.emissionsFactorPerLitre = dieselFactor;
+        metadata.fuelTypeDetected = 'diesel';
+    }
+    else if (fuelType.includes('hybrid')) {
+        const hybridFactor = 2.31; // Standard base fuel chemistry factor for hybrid powertrains
+        carbonKg = actualFuelLitres * hybridFactor;
+        metadata.calculationMethod = 'FUEL_CHEMISTRY_HYBRID';
+        metadata.emissionsFactorPerLitre = hybridFactor;
+        metadata.fuelTypeDetected = 'hybrid';
+    }
+    // 4. Fallback Priority: Fall back to an explicit profile distance multiplier if fuel data is vague
+    else if (!isNaN(multiplier) && multiplier > 0) {
         carbonKg = distanceKm * multiplier;
         metadata.calculationMethod = 'PROFILE_MULTIPLIER_MATCH';
         metadata.multiplierUsed = multiplier;
     }
-    // 4. Priority 2: Calculate based on vehicle fuel type if specified
-    else if (fuelType.includes('electric') || fuelType === 'ev') {
-        carbonKg = 0; // Tailpipe zero-emissions default
-        metadata.calculationMethod = 'PURE_ELECTRIC_ZERO_EMISSION';
-        metadata.fuelTypeDetected = 'electric';
-    } else if (fuelType.includes('diesel')) {
-        const dieselFactor = 0.26; // Average kg CO2/km for diesel fleet asset
-        carbonKg = distanceKm * dieselFactor;
-        metadata.calculationMethod = 'FUEL_TYPE_DIESEL_FACTOR';
-        metadata.multiplierUsed = dieselFactor;
-        metadata.fuelTypeDetected = 'diesel';
-    } else if (fuelType.includes('hybrid')) {
-        const hybridFactor = 0.12; // Average kg CO2/km for hybrid fleet asset
-        carbonKg = distanceKm * hybridFactor;
-        metadata.calculationMethod = 'FUEL_TYPE_HYBRID_FACTOR';
-        metadata.multiplierUsed = hybridFactor;
-        metadata.fuelTypeDetected = 'hybrid';
-    }
-    // 5. Priority 3: Fallback standard passenger vehicle multiplier (0.23 kg CO2/km)
+    // 5. Global Fallback: Standard passenger vehicle multiplier (0.23 kg CO2/km)
     else {
         const globalFallbackFactor = 0.23;
         carbonKg = distanceKm * globalFallbackFactor;
@@ -138,6 +147,9 @@ export async function calculateVehicleEmissions(
         metadata.multiplierUsed = globalFallbackFactor;
         if (fuelType) metadata.fuelTypeDetected = fuelType;
     }
+
+    // Dynamic field injection for tracking actual visual intensity levels in the interface
+    metadata.calculatedEmissionsIntensity = parseFloat((carbonKg / distanceKm).toFixed(6));
 
     return {
         carbonKg: parseFloat(carbonKg.toFixed(3)),

@@ -1,5 +1,4 @@
 // src/app/components/home/dispatch/DispatchForm.jsx
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -9,28 +8,26 @@ import TabSelector from './TabSelector';
 import AuditSubmitButton from './AuditSubmitButton';
 import useAirportSearch from '../../../hooks/useAirportSearch';
 import { supabase } from '../../../lib/supabaseClient';
+import { getFormInitialDates } from '../../../utils/dateHelpers';
+import { processFormSubmission } from '../../../utils/formSubmitHandler';
 
 export default function DispatchForm({
-    distance,
-    setDistance,
-    unit,
-    setUnit,
-    onSubmit,
-    loading,
-    customVehicles,
-    selectedCustomVehicle,
-    setSelectedCustomVehicle,
-    setModal
+    distance, setDistance, unit, setUnit, onSubmit, loading,
+    customVehicles, selectedCustomVehicle, setSelectedCustomVehicle, setModal
 }) {
     const [activeTab, setActiveTab] = useState('vehicle');
+    const { todayString, defaultStartMonthString } = getFormInitialDates();
 
     // Input States Context
     const [weight, setWeight] = useState('');
     const [weightUnit, setWeightUnit] = useState('kg');
+    const [shippingMode, setShippingMode] = useState('standard');
     const [depAirport, setDepAirport] = useState('');
     const [destAirport, setDestAirport] = useState('');
     const [passengers, setPassengers] = useState(1);
+    const [flightClass, setFlightClass] = useState('economy');
     const [electricityKwh, setElectricityKwh] = useState('');
+    const [powerSource, setPowerSource] = useState('utility_grid'); // Injected advanced electricity source state hook
     const [countryCode, setCountryCode] = useState('ZA');
     const [gasQuantity, setGasQuantity] = useState('');
     const [gasType, setGasType] = useState('NATURAL_GAS');
@@ -43,16 +40,6 @@ export default function DispatchForm({
     const [osrmTotalDuration, setOsrmTotalDuration] = useState(0);
     const [osrmLegsData, setOsrmLegsData] = useState([]);
     const [osrmWaypointsData, setOsrmWaypointsData] = useState([]);
-
-    // 1. Generate live calculated date string components
-    const currentDateObj = new Date();
-    const todayString = currentDateObj.toISOString().split('T')[0];
-
-    // 2. Subtract exactly 1 month to establish the baseline start month boundary
-    const pastDateObj = new Date();
-    pastDateObj.setMonth(pastDateObj.getMonth() - 1);
-    const defaultStartMonthString = pastDateObj.toISOString().split('T')[0];
-
 
     const [taxStartDate, setTaxStartDate] = useState(defaultStartMonthString);
     const [taxEndDate, setTaxEndDate] = useState(todayString);
@@ -67,7 +54,6 @@ export default function DispatchForm({
         }
     };
 
-    // FIXED: Hook parameters extracted safely without reactive mutation listeners
     const { originAirportsList = [], destAirportsList = [], searchLoading = false, fetchAirportsFromDatabase } = useAirportSearch(activeTab) || {};
 
     useEffect(() => {
@@ -82,69 +68,37 @@ export default function DispatchForm({
         fetchCountriesFromDatabase();
     }, []);
 
-    // FIXED CONTROL INTERCEPTOR: Safe function handles tab switches and resets states cleanly inside a user-driven handler
     const handleTabChange = (targetTab) => {
         setActiveTab(targetTab);
         setOpenDropdownKey(null);
 
-        // Manual explicit state wipe eliminates all useEffect background render loop cycles completely
         setOsrmTotalDuration(0);
         setOsrmLegsData([]);
         setOsrmWaypointsData([]);
         setRouteCoordinates([]);
         setDistance('');
         setWeight('');
+        setShippingMode('standard');
         setDepAirport('');
         setDestAirport('');
+        setFlightClass('economy');
         setElectricityKwh('');
+        setPowerSource('utility_grid'); // Wipes choices back cleanly to default configuration on cross tab actions
         setGasQuantity('');
     };
 
     const handleFormSubmit = (e) => {
-        e.preventDefault();
-
-        if (activeTab !== 'route' && activeTab !== 'tax' && emissionDate > todayString) {
-            return triggerDialogAlert(`Selected entry date cannot be in the future. Max allowed date is ${todayString}.`);
-        }
-
-        const trackingPayload = ['route', 'tax'].includes(activeTab) ? {} : { emission_date: emissionDate };
-
-        if (activeTab === 'vehicle') {
-            if (!selectedCustomVehicle) return triggerDialogAlert('Please select a valid vehicle from your active fleet registration list.');
-            onSubmit({
-                ...trackingPayload, type: 'vehicle', distance: distance.toString(), unit, vehicle_id: selectedCustomVehicle,
-                osrm_total_duration: osrmTotalDuration, osrm_legs_data: osrmLegsData, osrm_waypoints_data: osrmWaypointsData
-            });
-        } else if (activeTab === 'shipping') {
-            onSubmit({
-                ...trackingPayload, type: 'shipping', distance: distance.toString(), unit, cargo_weight: weight.toString(), mass_unit: weightUnit,
-                osrm_total_duration: osrmTotalDuration, osrm_legs_data: osrmLegsData, osrm_waypoints_data: osrmWaypointsData
-            });
-        } else if (activeTab === 'flight') {
-            if (!depAirport || !destAirport) return triggerDialogAlert('Please select valid origin and destination terminals from the database dropdown.');
-            if (depAirport === destAirport) return triggerDialogAlert('Flight origin and destination cannot match the same terminal location.');
-            onSubmit({ ...trackingPayload, type: 'flight', passengers: passengers.toString(), origin_iata: depAirport.trim(), dest_iata: destAirport.trim() });
-        } else if (activeTab === 'electricity') {
-            if (!countryCode) return triggerDialogAlert('Please select a valid target grid region country.');
-            onSubmit({ ...trackingPayload, type: 'electricity', kwh: electricityKwh.toString(), country_code: countryCode.trim().toUpperCase() });
-        } else if (activeTab === 'gas') {
-            onSubmit({ ...trackingPayload, type: 'gas', quantity: gasQuantity.toString(), gas_type: gasType, gas_unit: gasUnit });
-        } else if (activeTab === 'route') {
-            if (!selectedCustomVehicle) return triggerDialogAlert('Please select a valid vehicle profile asset for route trace analytics.');
-            if (routeCoordinates.length < 2) return triggerDialogAlert('Please click on the tracker canvas map frame to plot at least 2 coordinate points.');
-
-            onSubmit({
-                ...trackingPayload, type: 'route', vehicle_id: selectedCustomVehicle, coordinates_string: routeCoordinates,
-                osrm_total_duration: osrmTotalDuration, osrm_legs_data: osrmLegsData, osrm_waypoints_data: osrmWaypointsData
-            });
-        } else if (activeTab === 'tax') {
-            onSubmit({ ...trackingPayload, type: 'tax', start_date: taxStartDate, end_date: taxEndDate });
-        }
+        processFormSubmission({
+            e, activeTab, emissionDate, todayString, distance, unit, selectedCustomVehicle,
+            weight, weightUnit, shippingMode, depAirport, destAirport, passengers, flightClass,
+            countryCode, electricityKwh, powerSource, gasQuantity, gasType, gasUnit, routeCoordinates,
+            taxStartDate, taxEndDate, osrmTotalDuration, osrmLegsData, osrmWaypointsData,
+            triggerDialogAlert, onSubmit
+        });
     };
 
     return (
         <div className="p-5 bg-slate-900/40 border border-slate-800 rounded-xl transition-all duration-300 stims-hover-glow relative group">
-            {/* FIXED OVERRIDE: Uses handleTabChange directly to decouple render sequences */}
             <TabSelector activeTab={activeTab} setActiveTab={handleTabChange} setOpenDropdownKey={setOpenDropdownKey} />
 
             <form onSubmit={handleFormSubmit} className="space-y-4 font-mono text-xs">
@@ -159,6 +113,8 @@ export default function DispatchForm({
                     routeCoordinates={routeCoordinates} setRouteCoordinates={setRouteCoordinates}
                     taxStartDate={taxStartDate} setTaxStartDate={setTaxStartDate} taxEndDate={taxEndDate} setTaxEndDate={setTaxEndDate}
                     maxDateBoundary={todayString} setOsrmTotalDuration={setOsrmTotalDuration} setOsrmLegsData={setOsrmLegsData} setOsrmWaypointsData={setOsrmWaypointsData}
+                    shippingMode={shippingMode} setShippingMode={setShippingMode}
+                    flightClass={flightClass} setFlightClass={setFlightClass}
                 />
 
                 <UtilityFormFields
@@ -166,6 +122,7 @@ export default function DispatchForm({
                     countryCode={countryCode} setCountryCode={setCountryCode} gasQuantity={gasQuantity} setGasQuantity={setGasQuantity}
                     gasType={gasType} setGasType={setGasType} gasUnit={gasUnit} setGasUnit={setGasUnit}
                     dbCountriesList={dbCountriesList} openDropdownKey={openDropdownKey} setOpenDropdownKey={setOpenDropdownKey}
+                    powerSource={powerSource} setPowerSource={setPowerSource} // Correctly wired down to panel layer fields row
                 />
 
                 {!['tax', 'route'].includes(activeTab) && (

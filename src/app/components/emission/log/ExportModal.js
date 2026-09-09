@@ -1,5 +1,3 @@
-// src/app/components/fleet/log/ExportModal.js
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -51,26 +49,11 @@ export default function ExportModal({
         }
 
         setSending(true);
-        setStatusMsg('Compiling system compliance report PDF stream...');
+        setStatusMsg('Routing secure document payload request to email relay...');
 
         try {
-            const response = await fetch(getTargetPdfUrl());
-            if (!response.ok) throw new Error(`API stream error: ${response.statusText}`);
-
-            const pdfArrayBuffer = await response.arrayBuffer();
-            const bytes = new Uint8Array(pdfArrayBuffer);
-            let binaryString = '';
-            const len = bytes.byteLength;
-
-            for (let i = 0; i < len; i++) {
-                binaryString += String.fromCharCode(bytes[i]);
-            }
-
-            const cleanPdfBase64 = btoa(binaryString);
-            setStatusMsg('Routing encrypted document payload to email relay...');
-
+            // LIGHTWEIGHT PAYLOAD: Send clean structural metadata parameters instead of giant Base64 streams
             const payloadEnvelope = {
-                data: cleanPdfBase64,
                 startDate: startDate || "2026-08-01",
                 endDate: endDate || "2026-08-31",
                 userId: user?.id || user?.user?.id

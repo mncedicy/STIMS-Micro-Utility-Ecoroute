@@ -4,6 +4,12 @@ const FLIGHT_TIERS = {
     LONG_HAUL: 0.147,   // Flights > 3700 km
 };
 
+const CABIN_CLASS_MULTIPLIERS = {
+    economy: 1.0,
+    business: 2.5,
+    first: 4.0
+};
+
 const RADIATIVE_FORCING_INDEX = 1.9;
 
 function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
@@ -74,8 +80,10 @@ async function fetchAirportRecord(identifier) {
 /**
  * Enhanced Flight Calculation Engine with Safe Fallbacks
  */
-export async function calculateFlightEmissions(originIdentifier, destIdentifier, passengersCount) {
+export async function calculateFlightEmissions(originIdentifier, destIdentifier, passengersCount, flightClass = 'economy') {
     const pCount = parseInt(passengersCount, 10) || 1;
+    const selectedClass = (flightClass || 'economy').toLowerCase();
+    const classMultiplier = CABIN_CLASS_MULTIPLIERS[selectedClass] || CABIN_CLASS_MULTIPLIERS.economy;
 
     // 1. Concurrently resolve airport records
     const [origin, dest] = await Promise.all([
@@ -90,7 +98,7 @@ export async function calculateFlightEmissions(originIdentifier, destIdentifier,
 
         const defaultDistanceKm = 500;
         const factor = FLIGHT_TIERS.SHORT_HAUL;
-        const fallbackCarbonKg = defaultDistanceKm * factor * pCount * RADIATIVE_FORCING_INDEX;
+        const fallbackCarbonKg = defaultDistanceKm * factor * pCount * RADIATIVE_FORCING_INDEX * classMultiplier;
 
         return {
             carbonKg: parseFloat(fallbackCarbonKg.toFixed(2)),
@@ -104,6 +112,8 @@ export async function calculateFlightEmissions(originIdentifier, destIdentifier,
                 distanceKm: defaultDistanceKm,
                 flightTier: 'SHORT_HAUL',
                 passengers: pCount,
+                flight_class: selectedClass,
+                classMultiplierApplied: classMultiplier,
                 is_fallback: true,
                 notice: `Calculated using baseline flight parameters because terminal ID '${missingId}' was not found.`,
                 timestamp: new Date().toISOString()
@@ -131,7 +141,7 @@ export async function calculateFlightEmissions(originIdentifier, destIdentifier,
         tierDisplay = 'LONG_HAUL';
     }
 
-    const rawCarbonKg = distanceKm * factor * pCount * RADIATIVE_FORCING_INDEX;
+    const rawCarbonKg = distanceKm * factor * pCount * RADIATIVE_FORCING_INDEX * classMultiplier;
 
     return {
         carbonKg: parseFloat(rawCarbonKg.toFixed(2)),
@@ -147,6 +157,8 @@ export async function calculateFlightEmissions(originIdentifier, destIdentifier,
             distanceKm: parseFloat(distanceKm.toFixed(2)),
             flightTier: tierDisplay,
             passengers: pCount,
+            flight_class: selectedClass,
+            classMultiplierApplied: classMultiplier,
             factorUsed: factor,
             rfiApplied: RADIATIVE_FORCING_INDEX,
             timestamp: new Date().toISOString()

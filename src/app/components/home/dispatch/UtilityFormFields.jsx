@@ -19,7 +19,9 @@ export default function UtilityFormFields({
     setGasUnit,
     dbCountriesList = [],
     openDropdownKey,
-    setOpenDropdownKey
+    setOpenDropdownKey,
+    powerSource,       // Injected advanced power mix state properties
+    setPowerSource     // Bound seamlessly to your central wrapper states
 }) {
     if (!['electricity', 'gas'].includes(activeTab)) return null;
 
@@ -40,6 +42,7 @@ export default function UtilityFormFields({
                         Measures Scope 2 indirect carbon intensity configurations derived from regional power grid consumptions.
                     </div>
 
+                    {/* Row 1: Energy Consumed and Power Generation Type Dropdown */}
                     <div className="grid grid-cols-2 gap-2 items-start">
                         <div>
                             <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider font-bold">ENERGY CONSUMED (KWH)</label>
@@ -48,11 +51,27 @@ export default function UtilityFormFields({
                                 step="any"
                                 value={electricityKwh}
                                 onChange={(e) => setElectricityKwh(e.target.value)}
-                                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono text-xs h-[34px]"
                                 required
                             />
                         </div>
-                        <div className="relative">
+                        <div>
+                            <label className="block text-slate-400 mb-1 text-[11px] uppercase tracking-wider font-bold">POWER SUPPLY SOURCE</label>
+                            <select
+                                value={powerSource || 'utility_grid'}
+                                onChange={(e) => setPowerSource(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer font-mono text-xs h-[34px]"
+                            >
+                                <option value="utility_grid">Regional Utility Grid (Scope 2)</option>
+                                <option value="diesel_generator">Standby Diesel Generator (Scope 1)</option>
+                                <option value="solar_pv">Solar PV / Battery Storage (Off-Grid)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Change the conditional statement block to render the region dropdown at all times */}
+                    <div className="animate-fade-in">
+                        <div className="relative w-full">
                             <SearchableDropdownField
                                 label="GRID REGION"
                                 placeholder="Select Country..."
@@ -66,6 +85,7 @@ export default function UtilityFormFields({
                             />
                         </div>
                     </div>
+
                 </div>
             )}
 
