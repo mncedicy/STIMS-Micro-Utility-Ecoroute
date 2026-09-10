@@ -31,35 +31,42 @@ export default function ReferralLegalSection() {
     }, []);
 
     return (
-        <div className="space-y-2 font-mono text-xs border-t border-slate-900 pt-4">
+        <div className="space-y-2 font-mono text-xs border-t border-slate-900 pt-4 text-left">
             <h4 className="text-emerald-400 font-bold uppercase text-[11px] tracking-wide">
-                6.0 High-Yield Affiliate & Referral Program Terms
+                6.0 Referral Program Rules
             </h4>
             <p className="text-slate-200">
-                By participating in the STIMS EcoRoute affiliate program and sharing your custom referral URL, you agree to the following rules. These terms are absolute and enforced automatically at the database level:
+                By using your custom referral link, you agree to these rules. These rules are final and applied automatically by our system:
             </p>
 
-            <div className="space-y-2 mt-2 pl-2 border-l border-slate-800 text-slate-400">
+            <div className="space-y-2 mt-2 pl-2 border-l border-slate-800 text-slate-400 font-sans normal-case leading-relaxed">
                 <p>
-                    <strong className="text-slate-100 font-bold">6.1 Payout Limit Caps:</strong> Commissions only apply to the initial subscription payment count limit configured for each application layout in our database rules. Payout cycles stop generating once the threshold limit of <strong className="text-blue-400">{rules.limit} {rules.limit === 1 ? 'payment' : 'payments'}</strong> per friend is reached.
+                    <strong className="text-slate-100 font-bold font-mono text-[10px] block mb-0.5">6.1 REWARD LIMITS:</strong>
+                    You only earn money from your friend's first payments. You stop earning rewards after your friend makes <strong className="text-blue-400">{rules.limit} {rules.limit === 1 ? 'payment' : 'payments'}</strong>. You get a <strong className="text-emerald-400">{rules.commission}% cash reward</strong> from their subscription cost.
                 </p>
                 <p>
-                    <strong className="text-slate-100 font-bold">6.2 One-Time Credit Rule:</strong> Referral pathways are credited on a one-time basis per referred account entity. If a referred friend cancels their plan and resubscribes again later, no duplicate commissions or extra tracking credits will be assigned to your ledger balance. When active, you earn a <strong className="text-emerald-400">{rules.commission}% cash commission</strong> from their premium subscription payment.
+                    <strong className="text-slate-100 font-bold font-mono text-[10px] block mb-0.5">6.2 ONE-TIME REWARD ONLY:</strong>
+                    Each invited account can only reward you once. If your friend cancels their plan and signs up again later, you will not receive a second reward.
                 </p>
-                <p className="text-rose-400">
-                    <strong className="text-slate-100 font-bold">6.3 Active Account & Forfeiture Policy:</strong> You must maintain an active Premium Pro plan. If your subscription is cancelled, expires, or drops to the free tier for any reason, all unpaid earnings waiting in your balance queues, as well as all active reference links and historical referral tracking records, are permanently lost, cleared, and forfeited instantly.
-                </p>
-                <p>
-                    <strong className="text-slate-100 font-bold">6.4 Link Tracking Protocol:</strong> Invited friends must register explicitly using your exact referral tracking URL link format or supply your registered email profile index if prompted during signup. Typo entries or missed tracking connections cannot be corrected or credited manually.
-                </p>
-                <p>
-                    <strong className="text-slate-100 font-bold">6.5 Bank Account Identity Matching:</strong> For security compliance, the account holder name submitted on your Paystack disbursement profile must match your registered account identity. Payments sent to accounts with mismatched names will be rejected by our banking gateways.
+                <p className="text-rose-400/90">
+                    <strong className="text-slate-100 font-bold font-mono text-[10px] block mb-0.5">6.3 ACCOUNT TIER AND LOSS POLICY:</strong>
+                    You must keep an active Premium Pro plan to receive your money. If your plan is cancelled, expires, or moves to the free plan, you lose all your unpaid earnings, active links, and referral history forever.
                 </p>
                 <p>
-                    <strong className="text-slate-100 font-bold">6.6 Settlement Delivery Window:</strong> Once a withdrawal request is successfully initiated via the dashboard balance portal, please allow a processing window of exactly 2 to 3 business days for funds to clear.
+                    <strong className="text-slate-100 font-bold font-mono text-[10px] block mb-0.5">6.4 LINK TRACKING RULES:</strong>
+                    Your friends must sign up using your exact referral link, or type in your account email address if asked during signup. We cannot fix wrong links or give rewards manually.
                 </p>
                 <p>
-                    <strong className="text-slate-100 font-bold">6.7 Minimum Withdrawal Threshold:</strong> Payout requests are subject to a minimum cashout limit constraint of <strong className="font-mono text-slate-100">R100.00 ZAR</strong>. Balance values below this number cannot be extracted.
+                    <strong className="text-slate-100 font-bold font-mono text-[10px] block mb-0.5">6.5 BANK NAME CHECKING:</strong>
+                    The bank account name you give us for payouts must match the name on your user profile. Payments with wrong names will be rejected by our banking system.
+                </p>
+                <p>
+                    <strong className="text-slate-100 font-bold font-mono text-[10px] block mb-0.5">6.6 PAYOUT PROCESSING TIME:</strong>
+                    Once you ask for a payout through your dashboard, it takes exactly 2 to 3 business days for the money to arrive in your bank account.
+                </p>
+                <p>
+                    <strong className="text-slate-100 font-bold font-mono text-[10px] block mb-0.5">6.7 MINIMUM PAYOUT AMOUNT:</strong>
+                    The smallest amount you can withdraw is <strong className="font-mono text-slate-100">R100.00 ZAR</strong>. If your balance is lower than this number, you cannot cash it out.
                 </p>
             </div>
         </div>

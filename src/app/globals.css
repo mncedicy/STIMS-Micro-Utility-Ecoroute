@@ -1,3 +1,5 @@
+/* src/app/globals.css */
+
 @import "tailwindcss";
 
 @theme {
@@ -6,8 +8,13 @@
 }
 
 @layer base {
+  html {
+    /* REDUCED GLOBAL SCALE: Shrinks base typography from 16px down to 14px */
+    font-size: 14px;
+  }
+
   body {
-    @apply bg-[#020617] text-slate-100 antialiased overflow-x-hidden selection:bg-blue-500/30 selection:text-blue-200 font-sans;
+    @apply bg-[#020617] text-slate-100 antialiased overflow-x-hidden selection:bg-blue-500/30 selection:text-blue-200 font-sans text-xs;
   }
 }
 
@@ -57,7 +64,7 @@
 
 /* STIMS Premium Glass Panel Accent Hover Glows */
 .stims-panel-card {
-  @apply bg-slate-900/40 border border-slate-900 rounded-xl p-5 shadow-sm transition-all duration-300 ease-out relative overflow-hidden;
+  @apply bg-slate-900/40 border border-slate-900 rounded-xl p-5 shadow-sm transition-all duration-300 ease-out relative overflow-hidden text-[11px];
 }
 
 .stims-panel-card:hover {
@@ -65,23 +72,23 @@
 }
 
 .stims-btn-primary {
-  @apply bg-blue-600 hover:bg-blue-500 text-white font-mono uppercase tracking-wider text-[11px] font-bold py-2.5 px-4 rounded-lg shadow-sm transition-all duration-200 active:scale-[0.99] flex items-center justify-center space-x-2;
+  @apply bg-blue-600 hover:bg-blue-500 text-white font-mono uppercase tracking-wider text-[10px] font-bold py-2 px-3 rounded-lg shadow-sm transition-all duration-200 active:scale-[0.99] flex items-center justify-center space-x-2;
 }
 
 .stims-btn-secondary {
-  @apply bg-slate-950 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 font-mono uppercase tracking-wider text-[11px] font-bold py-2.5 px-4 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2;
+  @apply bg-slate-950 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 font-mono uppercase tracking-wider text-[10px] font-bold py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2;
 }
 
 .stims-input {
-  @apply w-full bg-[#020617] border border-slate-900 focus:border-slate-800 rounded-lg px-3 py-2 text-xs text-white outline-none font-sans transition-colors placeholder:text-slate-600;
+  @apply w-full bg-[#020617] border border-slate-900 focus:border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-white outline-none font-sans transition-colors placeholder:text-slate-600;
 }
 
 .stims-select {
-  @apply w-full bg-[#020617] border border-slate-900 focus:border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none transition-colors;
+  @apply w-full bg-[#020617] border border-slate-900 focus:border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-200 outline-none transition-colors;
 }
 
 .stims-label {
-  @apply text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest block mb-1.5;
+  @apply text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest block mb-1.5;
 }
 
 /* High-intensity custom neon blue glow shadow utility for cards */
@@ -90,8 +97,6 @@
   box-shadow: 0 0 25px 3px rgba(59, 130, 246, 0.25), inset 0 0 12px 1px rgba(59, 130, 246, 0.1);
   background-color: rgba(15, 23, 42, 0.9) !important;
 }
-
-/* src/app/globals.css */
 
 .stims-hover-glow-danger {
   transition: all 0.3s ease-in-out;

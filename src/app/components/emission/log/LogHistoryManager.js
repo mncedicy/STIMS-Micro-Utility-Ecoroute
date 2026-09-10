@@ -1,4 +1,4 @@
-// src\app\components\fleet\log\LogHistoryManager.js
+// src/app/components/emission/log/LogHistoryManager.js
 
 'use client';
 
@@ -11,13 +11,10 @@ import { executeLedgerPrint } from '../../../utils/ledgerPrintHelper';
 import { compileBulkTextSummary, resolveBulkCategoryDisplayLabel } from '../../../utils/ledgerSummaryHelper';
 
 export default function LogHistoryManager({ user, customVehicles = [], rawLogsArray = [] }) {
-    // Strict date boundary generator to enforce clean calendar limits
     const getInitialDates = () => {
         const today = new Date();
         const year = today.getFullYear();
         const month = String(today.getMonth() + 1).padStart(2, '0');
-
-        // Calculate the absolute last day of the current calendar month safely
         const lastDayNode = new Date(year, today.getMonth() + 1, 0).getDate();
 
         return {
@@ -32,7 +29,6 @@ export default function LogHistoryManager({ user, customVehicles = [], rawLogsAr
     const [inspectedLogNode, setInspectedLogNode] = useState(null);
     const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
 
-    // Initialize state strictly to the current calendar month bounds (e.g. 2026-08-01 to 2026-08-31)
     const [startDate, setStartDate] = useState(dateBounds.firstDay);
     const [endDate, setEndDate] = useState(dateBounds.lastDay);
 
@@ -44,7 +40,6 @@ export default function LogHistoryManager({ user, customVehicles = [], rawLogsAr
     };
 
     const filteredLogs = rawLogsArray.filter(log => {
-        // 1. Evaluate individual tracking category matches
         let matchesCriteria = false;
         const cat = (log.category_display || '').toLowerCase();
 
@@ -62,23 +57,18 @@ export default function LogHistoryManager({ user, customVehicles = [], rawLogsAr
             matchesCriteria = log.vehicle_id === selectedFilterVehicleId;
         }
 
-        // 2. STAGE ACCURATE DATE COMPARISON BOUNDS
         const logDateString = log.emission_date;
-
-        // FIXED FORCED BOUNDS: Fall back cleanly to the static current month parameters if string fields land empty
         const activeStart = startDate && startDate.trim() !== '' ? startDate : dateBounds.firstDay;
         const activeEnd = endDate && endDate.trim() !== '' ? endDate : dateBounds.lastDay;
 
-        // Absolute validation check: Verify the date exists and falls cleanly within limits
         if (!logDateString) return false;
-
         const isWithinDateRange = logDateString >= activeStart && logDateString <= activeEnd;
 
         return matchesCriteria && isWithinDateRange;
     });
 
     const compiledBulkMockLogNode = {
-        id: `BATCH_INDEX_SET_${filteredLogs.length}_NODES`,
+        id: `BATCH_${filteredLogs.length}_ITEMS`,
         category_display: resolveBulkCategoryDisplayLabel(selectedFilterVehicleId),
         carbon_kg: filteredLogs.reduce((acc, curr) => acc + Number(curr.carbon_kg || 0), 0).toFixed(2),
         carbon_mt: filteredLogs.reduce((acc, curr) => acc + Number(curr.carbon_mt || 0), 0).toFixed(4),
@@ -119,13 +109,13 @@ export default function LogHistoryManager({ user, customVehicles = [], rawLogsAr
                             onClick={() => setIsBulkExportOpen(true)}
                             className="w-full bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-bold py-2.5 px-4 rounded-lg uppercase tracking-wider text-[11px] text-center transition-all duration-300 stims-hover-glow cursor-pointer shadow-sm"
                         >
-                            🚀 Export All Filtered Logs ({filteredLogs.length} Records)
+                            🚀 Export Filtered Logs ({filteredLogs.length} Records)
                         </button>
                     </div>
                 </div>
             ) : (
                 <div className="text-center py-8 text-slate-600 text-xs border border-dashed border-slate-800 rounded-md bg-slate-950/10">
-                    No log metrics found matching selection indices within this date range.
+                    No logs found matching your selection filters.
                 </div>
             )}
 

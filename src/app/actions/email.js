@@ -1,9 +1,12 @@
+// src/app/actions/email.js
+
 "use server";
 
 import { createClient } from '@supabase/supabase-js';
 import { generateComplianceEmailHtml } from '../utils/emailTemplateEngine';
 import { sendSystemNotification } from '../utils/emailEngine';
 import { buildCompliancePdfBuffer } from '../api/export/pdf/pdfGeneratorService';
+import { updateUsage } from '../utils/dispatch/tokenHelpers';
 
 // Safe administrative bypass client instance
 const supabaseAdmin = createClient(
@@ -22,18 +25,25 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
     }
 
     try {
-        const displayId = logId?.startsWith('BATCH_INDEX_SET_') ? 'BULK_BATCH' : logId.substring(0, 8);
+        const isBulk = logId?.startsWith('BATCH_INDEX_SET_');
+        const displayId = isBulk ? 'BULK_BATCH' : logId.substring(0, 8);
         const currentLocalDate = new Date().toLocaleDateString('en-ZA');
 
         const startDate = payloadEnvelope?.startDate || "2026-08-01";
         const endDate = payloadEnvelope?.endDate || "2026-08-31";
+        const filterId = payloadEnvelope?.filterId || "all";
 
-        // FIXED UUID TARGETING: Bypasses string substitution splits on logId 
-        // to read the uncorrupted user account UUID directly from the envelope parameter payload
+        // Read the uncorrupted user account UUID directly from the envelope parameter payload
         const targetSearchUserId = payloadEnvelope?.userId;
 
         if (!targetSearchUserId) {
             return { success: false, error: "Target user identification parameter could not be resolved." };
+        }
+
+        // 1. CHARGE USAGE HERE FIRST: Primary user intent gate handles subtraction natively
+        const usageResult = await updateUsage(targetSearchUserId, 1);
+        if (usageResult.exceeded) {
+            return { success: false, error: `⚠️ Rate limit or usage cap exceeded: ${usageResult.message}` };
         }
 
         // Fetch corresponding user corporate profile details
@@ -49,13 +59,36 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
         let logsQuery = supabaseAdmin
             .from('ecoroute_emissions_logs')
             .select('*')
-            .eq('user_id', targetSearchUserId)
-            .order('emission_date', { ascending: false });
+            .eq('user_id', targetSearchUserId);
 
-        // FIXED FILTER APPLIED: If month window boundaries are passed from the UI, trim data logs before generating the PDF file buffer
-        if (startDate && endDate) {
-            logsQuery = logsQuery.gte('emission_date', startDate).lte('emission_date', endDate);
+        // ENHANCED GRANULAR FILTER ENGINE FOR EMAIL PDF GENERATION
+        if (!isBulk && logId) {
+            logsQuery = logsQuery.eq('id', logId);
+        } else {
+            // Trim data logs by calendar boundary windows
+            if (startDate && endDate) {
+                logsQuery = logsQuery.gte('emission_date', startDate).lte('emission_date', endDate);
+            }
+
+            // Trim data logs by selected specific structural branch or asset indices
+            if (filterId && filterId !== 'all') {
+                const lowerFilter = filterId.toLowerCase();
+                if (lowerFilter === 'filter_flight') {
+                    logsQuery = logsQuery.eq('category_display', 'flight');
+                } else if (lowerFilter === 'filter_shipping') {
+                    logsQuery = logsQuery.eq('category_display', 'shipping');
+                } else if (lowerFilter === 'filter_electricity') {
+                    logsQuery = logsQuery.eq('category_display', 'electricity');
+                } else if (lowerFilter === 'filter_gas') {
+                    logsQuery = logsQuery.eq('category_display', 'gas');
+                } else {
+                    logsQuery = logsQuery.eq('vehicle_id', filterId);
+                }
+            }
         }
+
+        // Enforce consistent sorting criteria array bounds
+        logsQuery = logsQuery.order('emission_date', { ascending: false });
 
         const { data: logs, error: logsError } = await logsQuery;
         if (logsError) throw logsError;
@@ -102,10 +135,21 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
             displayId
         });
 
-        // NATIVE SERVER GENERATION: Compile PDF buffer directly on the server to avoid Vercel Serverless payload limits
-        const subtitleRangeContext = startDate && endDate
-            ? `AUDIT FILTER RANGE: ${startDate} TO ${endDate}`
-            : 'CONSOLIDATED ENTERPRISE HISTORICAL COMPLIANCE RECORD SUMMARY';
+        // NATIVE SERVER GENERATION WITH PRECISE CONTEXT ALIGNMENTS
+        let subtitleRangeContext = 'CONSOLIDATED ENTERPRISE HISTORICAL COMPLIANCE RECORD SUMMARY';
+        if (isBulk && startDate && endDate) {
+            let entityLabel = 'ALL RECORDED TRANSACTIONS';
+            const lowerFilter = filterId.toLowerCase();
+            if (lowerFilter === 'filter_flight') entityLabel = 'AVIATION SECTOR ONLY';
+            else if (lowerFilter === 'filter_shipping') entityLabel = 'CARGO SHIPPING ONLY';
+            else if (lowerFilter === 'filter_electricity') entityLabel = 'GRID UTILITIES ONLY';
+            else if (lowerFilter === 'filter_gas') entityLabel = 'GAS COMBUSTION ACCOUNTS ONLY';
+            else if (filterId !== 'all') entityLabel = `ASSET REF ID [${filterId.substring(0, 8)}]`;
+
+            subtitleRangeContext = `AUDIT FILTER RANGE: ${startDate} TO ${endDate} | TARGET: ${entityLabel}`;
+        } else if (!isBulk) {
+            subtitleRangeContext = `SINGLE TRANSACTION AUDIT PACKET RECOVERY VERIFICATION SHEET`;
+        }
 
         const pdfArrayBuffer = await buildCompliancePdfBuffer(profile, logs || [], subtitleRangeContext);
 
@@ -130,6 +174,32 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
             console.error('[Email Exception]:', dispatchResult);
             throw new Error(dispatchResult.error || "Failed to deliver compliance report via available mail routes.");
         }
+
+        // 2. DYNAMIC SINGLE ATTACHMENT ANALYTICS: Extract metadata parameters safely from array index 0
+        const hasSingleLog = !isBulk && logs && logs.length > 0;
+        const targetLogNode = hasSingleLog ? logs[0] : null;
+
+        // Force lowercase mapping strings
+        const finalizedAssetId = hasSingleLog
+            ? (targetLogNode.vehicle_id || `filter_${(targetLogNode.category_display || '').toLowerCase()}`)
+            : filterId.toLowerCase();
+
+        const finalizedDateString = hasSingleLog
+            ? targetLogNode.emission_date
+            : null;
+
+        await supabaseAdmin.from('ecoroute_export_history').insert({
+            user_id: targetSearchUserId,
+            export_type: isBulk ? 'bulk' : 'single',
+            target_log_id: isBulk ? null : logId,
+            filter_asset_id: finalizedAssetId,
+            start_date: isBulk ? startDate : finalizedDateString,
+            end_date: isBulk ? endDate : finalizedDateString,
+            delivery_channel: 'email',
+            recipient_email: finalTargetEmailAddress.trim().toLowerCase(),
+            delivery_provider: dispatchResult.provider || 'unknown',
+            system_message_id: dispatchResult.id ? String(dispatchResult.id) : null
+        });
 
         return { success: true, message: "The identical PDF report file has been emailed successfully!" };
     } catch (err) {

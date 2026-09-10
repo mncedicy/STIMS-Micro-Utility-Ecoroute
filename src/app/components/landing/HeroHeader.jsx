@@ -34,7 +34,7 @@ export default function HeroHeader({ onGetStartedClick, appMeta }) {
     return (
         <>
             <div ref={ref} onMouseMove={onMove} onMouseLeave={() => { setMotion(''); }}
-                style={{ transform: motion }} className="w-full max-w-3xl mx-auto text-center space-y-6 relative z-10 animate-fade-in-up">
+                style={{ transform: motion }} className="w-full max-w-5xl mx-auto text-center space-y-6 relative z-10 animate-fade-in-up">
 
                 {/* FIXED: Perfectly Centered Top Level Ecosystem Logo Container Block */}
                 <div className="w-full flex items-center justify-center px-3 py-1.5 pt-8 mx-auto select-none">

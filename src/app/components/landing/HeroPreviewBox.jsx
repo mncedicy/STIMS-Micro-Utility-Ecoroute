@@ -12,7 +12,7 @@ export default function HeroPreviewBox({ appMeta }) {
 
     return (
         /* FIXED WIDTH: Set to max-w-4xl to ensure it lines up symmetrically with the HeroFeaturesGrid underneath */
-        <div className="w-full max-w-4xl mx-auto border border-slate-900 rounded-xl bg-slate-950/30 overflow-hidden flex flex-col md:flex-row shadow-2xl items-stretch transform hover:border-slate-800 transition-all duration-300 animate-fade-in-up stims-hover-glow relative z-10">
+        <div className="w-full max-w-5xl mx-auto border border-slate-900 rounded-xl bg-slate-950/30 overflow-hidden flex flex-col md:flex-row shadow-2xl items-stretch transform hover:border-slate-800 transition-all duration-300 animate-fade-in-up stims-hover-glow relative z-10">
 
             {/* Left Side Visual Cover Card */}
             <div className="w-full md:w-5/12 bg-slate-950 relative min-h-[180px] flex flex-col justify-end p-4 text-left border-b md:border-b-0 md:border-r border-slate-900 overflow-hidden">

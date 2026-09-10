@@ -1,19 +1,16 @@
+// src/app/components/emission/EmissionHeader.jsx
+
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 
-export default function EmissionHeader({
-    handleBackupDownload
-}) {
-
-
-
+export default function EmissionHeader({ handleBackupDownload }) {
     return (
         <div className="w-full font-mono relative">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-900 pb-4">
                 <div>
-                    <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200">LOGISTICS HISTORY & ARCHIVE LOGS</h2>
-                    <p className="text-[11px] text-slate-500">View your trip history, and export your data parameters.</p>
+                    <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200">Trip History & Data Logs</h2>
+                    <p className="text-[11px] text-slate-500">View your trip history and download your data.</p>
                 </div>
                 <div className="flex items-center space-x-2 shrink-0">
                     <button
@@ -23,12 +20,8 @@ export default function EmissionHeader({
                     >
                         💾 Backup Data
                     </button>
-
-
                 </div>
             </div>
-
-
         </div>
     );
 }

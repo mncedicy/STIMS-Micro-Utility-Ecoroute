@@ -1,4 +1,4 @@
-// /src/app/legal/page.jsx
+// src/app/legal/page.jsx
 'use client';
 
 import React from 'react';
@@ -14,16 +14,17 @@ export default function LegalPolicyPage() {
             <div className="absolute top-0 right-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="w-full max-w-3xl mx-auto space-y-8 bg-slate-900/30 border border-slate-900 rounded-xl p-6 md:p-8 backdrop-blur-sm relative z-10 shadow-2xl stims-hover-glow">
+            {/* FIXED WIDTH TUNING: Decreased maximum width from max-w-5xl to max-w-4xl for a balanced, compact reading layout */}
+            <div className="w-full max-w-4xl mx-auto space-y-8 bg-slate-900/30 border border-slate-900 rounded-xl p-6 md:p-8 backdrop-blur-sm relative z-10 shadow-2xl stims-hover-glow">
 
                 {/* Header Navigation Row */}
                 <div className="flex justify-between items-center border-b border-slate-900 pb-4">
                     <div>
                         <span className="text-[9px] font-mono tracking-widest text-blue-400 font-bold block mb-0.5">
-                            STIMS SOFTWARE SUITE LEGAL COMPLIANCE
+                            EcoRoute System Rules
                         </span>
                         <h1 className="text-lg font-black text-white uppercase tracking-wide">
-                            Terms of Licensing & Cancellation Policy
+                            Terms of Service & Cancellation Policy
                         </h1>
                     </div>
                     <Link
@@ -39,9 +40,9 @@ export default function LegalPolicyPage() {
 
                     {/* Section 1 */}
                     <div className="space-y-1.5 font-mono text-xs">
-                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">1.0 Subscription Terms & Licensing Fees</h4>
+                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">1.0 Monthly Plan Fees</h4>
                         <p>
-                            EcoRoute provides commercial multi-modal carbon footprint analytics accounting software under a Software-as-a-Service (SaaS) operational architecture model. Premium Pro plan subscriptions are billed on a recurring monthly cycle at a fixed rate of <strong>R280.00 ZAR per month</strong>.
+                            EcoRoute is a monthly subscription tool for tracking your carbon footprint. The Premium Pro plan costs a fixed rate of <strong>R280.00 ZAR per month</strong> and renews automatically.
                         </p>
                     </div>
 
@@ -49,40 +50,40 @@ export default function LegalPolicyPage() {
                     <div className="space-y-1.5 font-mono text-xs">
                         <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">2.0 Cancellation Policy</h4>
                         <p>
-                            Registered corporate operators can cancel their Premium Pro subscription renewals at any time directly through their billing account settings page. No manual authorization or support ticket is required.
+                            You can cancel your Premium Pro subscription at any time. To do this, just go to your account settings page. You do not need to contact support to cancel your plan.
                         </p>
                         <p className="bg-slate-950/60 border border-slate-800/40 p-2.5 rounded-lg text-slate-400 text-[11px] leading-relaxed font-sans">
-                            <strong className="text-slate-200">Note on Service Continuance:</strong> Upon requesting cancellation, your premium system access limits (up to 3,000 monthly request allocations and Excel batch CSV import log parsers) will remain fully active and viewable until the final day of your current paid billing period. At the end of the paid cycle, your account will automatically downgrade to the limited Free Sandbox tier without incurring further charges.
+                            <strong className="text-slate-200">How long your plan stays active:</strong> After you cancel, your premium features (like your 3,000 monthly request tokens and Excel CSV batch tools) will stay fully working until the last day of your current paid billing month. After that day, your account will move down to the limited free plan, and you will not be charged again.
                         </p>
                     </div>
 
                     {/* Section 3 */}
                     <div className="space-y-1.5 font-mono text-xs">
-                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">3.0 Refund Policy Matrix</h4>
+                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">3.0 Refund Rules</h4>
                         <p>
-                            Because premium software limits are provisioned and loaded into your account instantly at payment confirmation, <strong>EcoRoute does not provide cash refunds, partial credits, or pro-rated balances for early cancellations or unused monthly request slots</strong>.
+                            Because your pro features are added to your account instantly when you pay, <strong>EcoRoute does not give cash refunds or partial credits for early cancellations or unused monthly tokens</strong>.
                         </p>
                         <p>
-                            All card billing updates handled over the secure Paystack checkout gateway channels are final. If you believe an accounting error or duplicate card bill occurrence happened on your merchant statement, please submit a structural tracking flag directly through our integrated support ticket pipeline at the bottom of your dashboard workspace within 7 days.
+                            All payments handled by our payment gateway (Paystack) are final. If you see a billing error or duplicate charge on your bank statement, please send us a message using the support tool at the bottom of your dashboard within 7 days.
                         </p>
                     </div>
 
                     {/* Section 4 */}
                     <div className="space-y-1.5 font-mono text-xs">
-                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">4.0 Data Retention Policy upon Downgrade</h4>
+                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">4.0 Data Rules After Moving to Free Plan</h4>
                         <p>
-                            When an account transitions to the free sandbox tier, your logged fleet data history trails, customized vehicle assets registries, and calculation logs match signatures are securely preserved inside our encrypted database layers for exactly <strong>90 days</strong>. This lets you reactivate your subscription later without losing your records.
+                            If your account moves down to the free plan, we will keep your saved vehicles history, carbon logs, and data records completely safe in our database for exactly <strong>90 days</strong>. This allows you to reactivate your plan later without losing any of your data history.
                         </p>
                     </div>
 
                     {/* Section 5 */}
                     <div className="space-y-1.5 font-mono text-xs">
-                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">5.0 Statutory Legal Disclaimer</h4>
+                        <h4 className="text-white font-bold uppercase text-[11px] tracking-wide">5.0 General Disclaimer</h4>
                         <p>
-                            All carbon footprint assessments, global grid calculations, and tax exposure models provided by this software are estimates compiled based on the Greenhouse Gas Protocol guidelines and regional carbon taxing parameters.
+                            All carbon footprint numbers, tax estimates, and electrical grid calculations given by this software are estimates. They are based on general greenhouse gas guidelines.
                         </p>
                         <p className="text-slate-400">
-                            <strong className="text-slate-200">EcoRoute does not provide official financial, legal, tax, or environmental auditing advice.</strong> Business entities are entirely responsible for verifying their final tax summaries with certified public accountants, legal professionals, or official revenue services (such as SARS) before submitting tax returns or regulatory compliance disclosures. We are not liable for any business disruptions, financial penalties, or logging errors resulting from inaccurate user spreadsheet uploads or telemetry data mismatches.
+                            <strong className="text-slate-200">EcoRoute does not give official financial, legal, tax, or official auditing advice.</strong> You are entirely responsible for checking your final tax summaries with a certified public accountant or professional tax service (like SARS) before submitting official tax records. We are not responsible for any financial penalties, business problems, or data errors caused by incorrect file uploads or wrong vehicle setup information.
                         </p>
                     </div>
 
@@ -93,8 +94,8 @@ export default function LegalPolicyPage() {
 
                 {/* Footer Copyright Signatures Strip */}
                 <div className="flex justify-between items-center text-[9px] text-slate-600 border-t border-slate-900 pt-4 font-mono uppercase tracking-wider select-none">
-                    <span>© {currentYear} STIMS EcoRoute Core. All rights reserved.</span>
-                    <span>Document Version: 2026.3 // Verified Secure</span>
+                    <span>© {currentYear} STIMS EcoRoute. All rights reserved.</span>
+                    <span>Version: 2026.3 // Secure</span>
                 </div>
 
             </div>

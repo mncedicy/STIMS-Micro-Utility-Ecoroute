@@ -7,7 +7,7 @@ import DeveloperApiMatrix from './DeveloperApiMatrix';
 
 export default function HeroFeaturesGrid({ appMeta }) {
     return (
-        <div className="w-full max-w-4xl space-y-16 text-left relative z-10 animate-fade-in-up">
+        <div className="w-full max-w-5xl space-y-16 text-left relative z-10 animate-fade-in-up">
             {/* SECTION 1: ASYMMETRIC METRICS SPLITS - markets the ZAR tax estimator module directly to corporations */}
             <AsymmetricMetrics appMeta={appMeta} />
 

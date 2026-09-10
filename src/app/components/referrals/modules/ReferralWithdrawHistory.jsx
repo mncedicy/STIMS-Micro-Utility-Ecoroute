@@ -1,15 +1,27 @@
 // src/app/components/referrals/modules/ReferralWithdrawHistory.jsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function ReferralWithdrawHistory({ withdrawals = [] }) {
     const [filter, setFilter] = useState('all');
+    const [currentPage, setCurrentPage] = useState(1);
+    const recordsPerPage = 5;
+
+    // Reset pagination window position if a user switches status tabs
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filter]);
 
     const filteredWithdrawals = withdrawals.filter(w => {
         if (filter === 'all') return true;
         return w.status === filter;
     });
+
+    // Calculate structural array partitioning slices
+    const totalPages = Math.ceil(filteredWithdrawals.length / recordsPerPage) || 1;
+    const startIndex = (currentPage - 1) * recordsPerPage;
+    const paginatedWithdrawals = filteredWithdrawals.slice(startIndex, startIndex + recordsPerPage);
 
     return (
         <div className="stims-panel-card stims-hover-glow transition-all duration-300 space-y-4 flex flex-col h-full">
@@ -48,16 +60,16 @@ export default function ReferralWithdrawHistory({ withdrawals = [] }) {
                 </div>
             </div>
 
-            {/* FIXED HEIGH SCROLL CONTAINER: Min height ~2 rows, max height ~5 rows */}
+            {/* FIXED HEIGHT SCROLL CONTAINER: Bound parameters set precisely to slice records bounds */}
             <div className="overflow-y-auto scrollbar-none space-y-2 pr-1 min-h-[140px] max-h-[340px] flex-grow">
-                {filteredWithdrawals.length === 0 ? (
+                {paginatedWithdrawals.length === 0 ? (
                     <div className="flex items-center justify-center min-h-[140px]">
                         <p className="text-xs text-slate-600 font-mono text-center uppercase">
                             NO TRANSACTION LOGS MATCHING THIS FILTER.
                         </p>
                     </div>
                 ) : (
-                    filteredWithdrawals.map((row) => (
+                    paginatedWithdrawals.map((row) => (
                         <div key={row.id} className="p-3 bg-[#020617] border border-slate-900 rounded-lg text-xs font-mono flex flex-col justify-center space-y-1.5 min-h-[58px]">
                             <div className="flex justify-between items-center">
                                 <div>
@@ -88,6 +100,46 @@ export default function ReferralWithdrawHistory({ withdrawals = [] }) {
                     ))
                 )}
             </div>
+
+            {/* Pagination Controls Footer Container */}
+            {filteredWithdrawals.length > recordsPerPage && (
+                <div className="flex items-center justify-between border-t border-slate-900 pt-3 text-[10px] text-slate-500 uppercase tracking-wider font-mono shrink-0">
+                    <div>
+                        Showing <span className="text-slate-300 font-bold">{startIndex + 1}</span> to{' '}
+                        <span className="text-slate-300 font-bold">
+                            {Math.min(startIndex + recordsPerPage, filteredWithdrawals.length)}
+                        </span>{' '}
+                        of <span className="text-slate-300 font-bold">{filteredWithdrawals.length}</span> Traces
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <button
+                            type="button"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            className={`border border-slate-900 text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-md bg-slate-950 transition-all ${currentPage === 1
+                                ? 'opacity-40 cursor-not-allowed text-slate-600'
+                                : 'text-slate-400 hover:border-slate-700 hover:text-white stims-hover-glow cursor-pointer'
+                                }`}
+                        >
+                            ◀ Prev
+                        </button>
+                        <div className="text-slate-400 font-bold px-1 whitespace-nowrap">
+                            {currentPage} / {totalPages}
+                        </div>
+                        <button
+                            type="button"
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            className={`border border-slate-900 text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-md bg-slate-950 transition-all ${currentPage === totalPages
+                                ? 'opacity-40 cursor-not-allowed text-slate-600'
+                                : 'text-slate-400 hover:border-slate-700 hover:text-white stims-hover-glow cursor-pointer'
+                                }`}
+                        >
+                            Next ▶
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

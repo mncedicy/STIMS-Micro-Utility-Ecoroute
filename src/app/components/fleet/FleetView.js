@@ -1,4 +1,4 @@
-// src\app\components\fleet\FleetView.js
+// src/app/components/fleet/FleetView.js
 
 'use client';
 
@@ -46,7 +46,14 @@ export default function FleetView({ user, customVehicles = [], rawLogsArray = []
                 customVehicles={customVehicles}
             />
 
-            <FleetList customVehicles={customVehicles} onVehicleDeleted={loadData} isPremium={isPremium} />
+            {/* FIXED: Forwarded rawLogsArray into FleetList to maintain client consistency overrides */}
+            <FleetList
+                customVehicles={customVehicles}
+                rawLogsArray={rawLogsArray}
+                onVehicleDeleted={loadData}
+                isPremium={isPremium}
+                user={user}
+            />
         </div>
     );
 }

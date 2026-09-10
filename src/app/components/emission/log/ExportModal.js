@@ -1,3 +1,5 @@
+// src/app/components/emission/log/ExportModal.js
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -28,7 +30,7 @@ export default function ExportModal({
     const getTargetPdfUrl = () => {
         let targetDownloadUrl = `/api/export/pdf?userId=${user?.id}`;
         if (inspectedLogNode?.id?.startsWith('BATCH_INDEX_SET_')) {
-            targetDownloadUrl += `&exportType=bulk&startDate=${startDate}&endDate=${endDate}&filterId=${selectedFilterVehicleId}`;
+            targetDownloadUrl += `&exportType=bulk&startDate=${startDate}&endDate=${endDate}&filterId=${selectedFilterVehicleId || 'all'}`;
         } else {
             targetDownloadUrl += `&exportType=single&logId=${inspectedLogNode?.id}`;
         }
@@ -52,10 +54,11 @@ export default function ExportModal({
         setStatusMsg('Routing secure document payload request to email relay...');
 
         try {
-            // LIGHTWEIGHT PAYLOAD: Send clean structural metadata parameters instead of giant Base64 streams
+            // Forward filter tracking variables directly into structural metadata envelope
             const payloadEnvelope = {
                 startDate: startDate || "2026-08-01",
                 endDate: endDate || "2026-08-31",
+                filterId: selectedFilterVehicleId || "all",
                 userId: user?.id || user?.user?.id
             };
 
@@ -91,6 +94,14 @@ export default function ExportModal({
 
                 <p className="text-slate-400 leading-relaxed">How would you like to receive your professional carbon audit certificate?</p>
 
+                {/* Corporate Account Token Usage Advisory Banner */}
+                <div className="p-2.5 bg-blue-950/30 border border-blue-900/40 text-blue-400 rounded-lg text-[10px] leading-normal flex items-start space-x-2">
+                    <span className="shrink-0 mt-0.5">ℹ️</span>
+                    <span>
+                        <strong>QUOTA NOTICE:</strong> Generating or emailing this document will deduct <strong>1 request token</strong> from your corporate monthly limit.
+                    </span>
+                </div>
+
                 <div className="space-y-1">
                     <label className="text-[10px] text-slate-500 uppercase tracking-wider block">DESTINATION EMAIL ADDRESS</label>
                     <input
@@ -112,7 +123,7 @@ export default function ExportModal({
                         type="button"
                         disabled={sending}
                         onClick={handleLocalPdfGeneration}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer"
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer stims-hover-glow:hover"
                     >
                         📥 Print or Save PDF Locally
                     </button>
@@ -121,7 +132,7 @@ export default function ExportModal({
                         type="button"
                         disabled={sending}
                         onClick={handleEmailOptionClick}
-                        className="w-full font-bold bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer"
+                        className="w-full font-bold bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer stims-hover-glow:hover"
                     >
                         {sending ? "Processing..." : "📧 Email Clean Report File"}
                     </button>
