@@ -106,7 +106,7 @@ export default function FleetList({ customVehicles = [], rawLogsArray = [], onVe
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch w-full">
 
                 {/* Main Interactive Table Grid Section Box */}
-                <div className="p-4 sm:p-5 bg-slate-900/40 border border-slate-900 rounded-xl transition-all duration-300 relative group flex flex-col justify-between h-[440px]  stims-hover-glow transition-all duration-300">
+                <div className="p-4 sm:p-5 bg-slate-900/40 border border-slate-900 rounded-xl transition-all duration-300 relative group flex flex-col justify-between h-[400px]  stims-hover-glow transition-all duration-300">
                     <div className="flex flex-col h-full overflow-hidden">
                         {/* Header Tracker Metric Counter Status Strip */}
                         <div className="border-b border-slate-800 pb-2.5 mb-4 flex items-center justify-between shrink-0">
@@ -134,7 +134,7 @@ export default function FleetList({ customVehicles = [], rawLogsArray = [], onVe
                 </div>
 
                 {/* Symmetrical Contextual Asset Technical Inspection Panel Wrapper */}
-                <div className="h-[440px] flex flex-col">
+                <div className="h-[400px] flex flex-col">
                     {selectedVehicle ? (
                         <FleetAssetLedgerPanel
                             vehicle={selectedVehicle}
