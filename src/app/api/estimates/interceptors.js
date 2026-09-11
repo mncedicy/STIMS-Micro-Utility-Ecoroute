@@ -1,8 +1,8 @@
 // src/app/api/estimates/interceptors.js
-
 import { NextResponse } from 'next/server';
-import { calculate } from '@/app/utils/dispatch/routeHelpers';
-import { calculateTax } from '@/app/utils/dispatch/taxHelpers';
+import { calculate } from '../../utils/dispatch/routeHelpers';
+import { calculateTax } from '../../utils/dispatch/taxHelpers';
+import { supabaseAdmin } from '../../lib/supabaseAdminServer'; // Fixed: Converted to relative import path shortcut
 
 export async function handleSpecialCategoryCalculations({ cleanType, body, userId }) {
     if (cleanType === 'route') {
@@ -35,8 +35,6 @@ export async function handleSpecialCategoryCalculations({ cleanType, body, userI
                     vehicleDescription: specs.description || 'Honda Accord (2010)',
                     carbonMultiplierApplied: specs.carbon_multiplier || 0.220886,
                     coordinatesArray: body.coordinates_string,
-
-                    // Unified both camelCase and snake_case properties to guarantee unbreakable frontend layout binding
                     totalDurationSeconds: body.osrm_total_duration || 0,
                     tripLegsArray: body.osrm_legs_data || [],
                     waypointsArray: body.osrm_waypoints_data || [],
@@ -53,7 +51,7 @@ export async function handleSpecialCategoryCalculations({ cleanType, body, userI
         const cleanStartDate = body.start_date ? body.start_date.toString().substring(0, 10) : null;
         const cleanEndDate = body.end_date ? body.end_date.toString().substring(0, 10) : null;
 
-        const taxResult = await calculateTax(userId, cleanStartDate, cleanEndDate);
+        const taxResult = await calculateTax(userId, cleanStartDate, cleanEndDate, supabaseAdmin);
         if (taxResult.error) {
             return {
                 intercepted: true,

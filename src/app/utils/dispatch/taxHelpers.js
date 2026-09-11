@@ -1,5 +1,4 @@
 // src/app/utils/dispatch/taxHelpers.js
-
 import { supabase } from '../../lib/supabaseClient';
 import { updateUsage, getTokenRecord } from './tokenHelpers';
 import { dispatchCorporateWebhook } from '@/app/api/v1/config/webhookDispatcher';
@@ -10,8 +9,12 @@ import {
 
 /**
  * Calculates carbon tax liability, tracks API request usage, dispatches webhook, and builds structured response.
+ * @param {string} user_id - The targeted authenticated corporate user UUID.
+ * @param {string} startDate - Lower bound date string (YYYY-MM-DD).
+ * @param {string} endDate - Upper bound date string (YYYY-MM-DD).
+ * @param {object} [serverClientOverride] - Optional direct server-side high-privilege supabase client injection.
  */
-export async function calculateTax(user_id, startDate, endDate) {
+export async function calculateTax(user_id, startDate, endDate, serverClientOverride = null) {
     try {
         // 1. Increment and validate usage quota
         const usageResult = await updateUsage(user_id, 1);
@@ -19,15 +22,18 @@ export async function calculateTax(user_id, startDate, endDate) {
             return { error: usageResult.message, status: 429 };
         }
 
-
         // 2. Fetch organization token details
         const tokenRecord = await getTokenRecord(user_id);
 
-        // 3. Query emissions logs for date range
-        let query = supabase
+        // 3. Select active database client (fallback to high-privilege service-role context inside API routes)
+        const dbClient = serverClientOverride || supabase;
+
+        // Query emissions logs for date range while explicitly filtering out 'excluded' records
+        let query = dbClient
             .from('ecoroute_emissions_logs')
-            .select('carbon_kg, carbon_mt, emission_date')
-            .eq('user_id', user_id);
+            .select('carbon_kg, carbon_mt, emission_date, print_status')
+            .eq('user_id', user_id)
+            .neq('print_status', 'excluded');
 
         if (startDate) query = query.gte('emission_date', startDate);
         if (endDate) query = query.lte('emission_date', endDate);
