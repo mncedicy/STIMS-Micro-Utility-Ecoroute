@@ -3,7 +3,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import EditProfileModal from './EditProfileModal';
+import EditProfileModal from './profile/EditProfileModal';
 import QuotaUsageBadge from './QuotaUsageBadge';
 
 export default function Header({ user, profile, isPremium, quotaReached, currentUsage = 0, limitCap = 100 }) {

@@ -1,6 +1,3 @@
-// src\app\components\emission\log\LogHistoryItem.js
-
-
 'use client';
 
 import React from 'react';
@@ -26,7 +23,6 @@ export default function LogHistoryItem({
             const meta = payloadObject?.metadata || {};
 
             if (meta.origin_name && meta.destination_name) {
-                // FIXED FORMULATION: Cleans, slices to 9 chars, and structures destination names identically to your PDF system guidelines
                 const cleanOriginName = meta.origin_name.replace(/[^a-zA-Z0-9\s]/g, '').substring(0, 10).trim();
                 const cleanDestName = meta.destination_name.replace(/[^a-zA-Z0-9\s]/g, '').substring(0, 10).trim();
 
@@ -56,6 +52,7 @@ export default function LogHistoryItem({
         <div className="max-h-[300px] overflow-y-auto border border-slate-950 rounded bg-slate-950/20 divide-y divide-slate-900/50 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-800 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-track]:bg-transparent w-full font-mono">
             {filteredLogs.map((log) => {
                 const displayLabel = resolveDynamicItemLabel(log);
+                const isExcluded = log.print_status === 'excluded';
 
                 return (
                     <button
@@ -65,15 +62,24 @@ export default function LogHistoryItem({
                         className={`w-full text-left p-3 flex items-center justify-between text-xs transition-all ${inspectedLogNode?.id === log.id
                             ? 'bg-blue-600/10 border-l-2 border-blue-500'
                             : 'hover:bg-slate-950/40 border-l-2 border-transparent'
-                            }`}
+                            } ${isExcluded ? 'opacity-45 saturate-50' : ''}`}
                     >
                         <div className="flex-grow pr-4 max-w-[280px] truncate">
                             <span className="block font-bold text-slate-300 truncate tracking-wide uppercase">
                                 {displayLabel}
                             </span>
-                            <span className="text-[10px] text-slate-500 block mt-0.5">
-                                📅 {new Date(log.emission_date).toLocaleDateString('en-ZA')}
-                            </span>
+
+                            <div className="flex items-center space-x-2 text-[10px] mt-0.5">
+                                <span className="text-slate-500">
+                                    📅 {new Date(log.emission_date).toLocaleDateString('en-ZA')}
+                                </span>
+                                {/* Conditionally rendered: Displays only when status evaluates to excluded */}
+                                {isExcluded && (
+                                    <span className="font-bold uppercase tracking-wider text-rose-400">
+                                        excluded
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         <div className="text-right w-20 shrink-0">
                             <span className="font-bold text-blue-400 block">{parseFloat(log.carbon_kg || 0).toFixed(1)} KG</span>

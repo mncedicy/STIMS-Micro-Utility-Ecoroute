@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 
 export default function VehicleHistoryTripList({ vehicleLogs = [] }) {
     const [currentPage, setCurrentPage] = useState(1);
-    const recordsPerPage = 3;
+    const recordsPerPage = 4;
 
     useEffect(() => {
         setCurrentPage(1);

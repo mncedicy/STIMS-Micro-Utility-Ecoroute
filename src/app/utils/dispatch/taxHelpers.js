@@ -19,6 +19,7 @@ export async function calculateTax(user_id, startDate, endDate) {
             return { error: usageResult.message, status: 429 };
         }
 
+
         // 2. Fetch organization token details
         const tokenRecord = await getTokenRecord(user_id);
 

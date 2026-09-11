@@ -100,7 +100,7 @@ export default function FleetManager({ user, isOpen, onClose, onVehicleAdded }) 
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-slate-500 hover:text-slate-300 transition-colors text-xs cursor-pointer"
+                        className="text-slate-400 hover:font-bold hover:text-blue-600 transition-colors text-xs cursor-pointer"
                     >
                         [ESC]
                     </button>
@@ -145,7 +145,7 @@ export default function FleetManager({ user, isOpen, onClose, onVehicleAdded }) 
                         type="button"
                         onClick={onClose}
                         disabled={saving}
-                        className="flex-1 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-400 py-2 rounded transition-colors uppercase text-[11px] tracking-wider cursor-pointer text-center"
+                        className="flex-1 bg-slate-950 hover:bg-slate-900  hover:text-slate-100 border border-slate-800 text-slate-400 py-2 rounded transition-colors uppercase text-[11px] tracking-wider cursor-pointer text-center stims-hover-glow cursor-pointer"
                     >
                         ABORT
                     </button>
@@ -153,7 +153,7 @@ export default function FleetManager({ user, isOpen, onClose, onVehicleAdded }) 
                         type="submit"
                         form="fleet-manager-form"
                         disabled={saving || !selectedModelData || !registration.trim()}
-                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded transition-colors uppercase text-[11px] tracking-wider disabled:opacity-50 cursor-pointer stims-hover-glow text-center"
+                        className="flex-1 bg-blue-600 hover:bg-blue-500 hover:text-slate-100 text-white font-bold py-2 rounded transition-colors uppercase text-[11px] tracking-wider disabled:opacity-50 cursor-pointer stims-hover-glow text-center"
                     >
                         {saving ? 'INJECTING ASSET...' : 'COMMIT TO LEDGER'}
                     </button>

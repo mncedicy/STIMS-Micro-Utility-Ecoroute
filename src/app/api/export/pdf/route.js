@@ -43,11 +43,13 @@ export async function GET(req) {
             .eq('id', userId)
             .maybeSingle();
 
-        // Target emissions log table ledger rows
+
+        // Target emissions log table ledger rows (Filtering out excluded logs)
         let logsQuery = supabaseAdmin
             .from('ecoroute_emissions_logs')
             .select('*')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .neq('print_status', 'excluded');
 
         // ENHANCED GRANULAR FILTER ENGINE
         if (exportType === 'single' && logId) {

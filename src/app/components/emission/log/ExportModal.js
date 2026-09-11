@@ -45,6 +45,9 @@ export default function ExportModal({
 
     const handleEmailOptionClick = async (e) => {
         e.preventDefault();
+
+        if (!user?.id) return setStatusMsg('⚠️ Active user session parameters dropped.');
+
         if (!customTargetEmail || !customTargetEmail.includes('@')) {
             setStatusMsg('⚠️ Please enter a valid email address.');
             return;
@@ -56,8 +59,8 @@ export default function ExportModal({
         try {
             // Forward filter tracking variables directly into structural metadata envelope
             const payloadEnvelope = {
-                startDate: startDate || "2026-08-01",
-                endDate: endDate || "2026-08-31",
+                startDate: startDate,
+                endDate: endDate,
                 filterId: selectedFilterVehicleId || "all",
                 userId: user?.id || user?.user?.id
             };
@@ -86,13 +89,23 @@ export default function ExportModal({
 
     return createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-mono text-xs">
-            <div className="w-full max-w-sm p-6 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl space-y-4 mx-auto transition-all duration-300">
-                <div className="flex items-center space-x-2 border-b border-slate-800 pb-2.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    <h4 className="text-[11px] font-bold text-slate-200 uppercase tracking-widest">EXPORT AUDIT REPORT</h4>
+            <div className="w-full max-w-md p-6 bg-slate-900 border stims-hover-glow transition-all duration-300 border-slate-800 rounded-xl shadow-2xl space-y-4 mx-auto transition-all duration-300">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <div className="flex items-center space-x-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                        <h4 className="text-[11px] font-bold text-slate-200 uppercase tracking-widest">EXPORT AUDIT REPORT</h4>
+                    </div>
+                    {/* Dismiss Icon Button */}
+                    <button
+                        type="button"
+                        disabled={sending}
+                        onClick={onClose}
+                        className="text-slate-400 hover:text-blue-600 font-bold text-xs uppercase tracking-widest cursor-pointer"
+                        aria-label="Dismiss"
+                    >
+                        ✕
+                    </button>
                 </div>
-
-                <p className="text-slate-400 leading-relaxed">How would you like to receive your professional carbon audit certificate?</p>
 
                 {/* Corporate Account Token Usage Advisory Banner */}
                 <div className="p-2.5 bg-blue-950/30 border border-blue-900/40 text-blue-400 rounded-lg text-[10px] leading-normal flex items-start space-x-2">
@@ -118,29 +131,31 @@ export default function ExportModal({
                     <div className="p-2.5 text-[10px] bg-slate-950/60 border border-slate-800 text-slate-300 rounded font-mono">{statusMsg}</div>
                 )}
 
-                <div className="flex flex-col gap-2 pt-1 text-[10px]">
+                {/* Print and Email buttons in 1 row */}
+                <div className="flex gap-2 pt-1 text-[10px]">
                     <button
                         type="button"
                         disabled={sending}
                         onClick={handleLocalPdfGeneration}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer stims-hover-glow:hover"
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all uppercase tracking-wider text-center stims-hover-glow cursor-pointer"
                     >
-                        📥 Print or Save PDF Locally
+                        📥 Print
                     </button>
 
                     <button
                         type="button"
                         disabled={sending}
                         onClick={handleEmailOptionClick}
-                        className="w-full font-bold bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white py-2.5 rounded-lg transition-all uppercase tracking-wider text-center cursor-pointer stims-hover-glow:hover"
+                        className="w-full font-bold bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white py-2.5 rounded-lg transition-all uppercase tracking-wider text-center stims-hover-glow cursor-pointer"
                     >
-                        {sending ? "Processing..." : "📧 Email Clean Report File"}
+                        {sending ? "Processing..." : "📧 Email"}
                     </button>
-
-                    <button type="button" disabled={sending} onClick={onClose} className="w-full text-slate-500 hover:text-slate-400 text-center py-1 mt-1 transition-colors uppercase text-[9px] tracking-widest">Dismiss Options</button>
                 </div>
             </div>
         </div>,
         document.body
     );
+
+
+
 }

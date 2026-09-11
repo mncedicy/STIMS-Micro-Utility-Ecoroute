@@ -29,8 +29,8 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
         const displayId = isBulk ? 'BULK_BATCH' : logId.substring(0, 8);
         const currentLocalDate = new Date().toLocaleDateString('en-ZA');
 
-        const startDate = payloadEnvelope?.startDate || "2026-08-01";
-        const endDate = payloadEnvelope?.endDate || "2026-08-31";
+        const startDate = payloadEnvelope?.startDate;
+        const endDate = payloadEnvelope?.endDate;
         const filterId = payloadEnvelope?.filterId || "all";
 
         // Read the uncorrupted user account UUID directly from the envelope parameter payload
@@ -55,11 +55,12 @@ export async function emailPdfReport(userEmail, logId, categoryDisplay, payloadE
 
         if (profileError) console.warn(`[Profile Lookup Warning]: ${profileError.message}`);
 
-        // Target emissions log table ledger rows
+        // Target emissions log table ledger rows (Filtering out excluded logs)
         let logsQuery = supabaseAdmin
             .from('ecoroute_emissions_logs')
             .select('*')
-            .eq('user_id', targetSearchUserId);
+            .eq('user_id', targetSearchUserId)
+            .neq('print_status', 'excluded');
 
         // ENHANCED GRANULAR FILTER ENGINE FOR EMAIL PDF GENERATION
         if (!isBulk && logId) {

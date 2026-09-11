@@ -101,6 +101,7 @@ export async function calculateVehicleEmissions(
         waypointsArray: osrmContext?.waypointsArray || [],
         fuel_litres: parseFloat(actualFuelLitres.toFixed(2)),
         l100km: parseFloat(l100km.toFixed(2)),
+        vehicleRegistration: userVehicle.registration || null,
     };
 
     const multiplier = parseFloat(userVehicle.carbon_multiplier);

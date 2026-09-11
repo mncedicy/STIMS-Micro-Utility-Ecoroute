@@ -45,10 +45,10 @@ export default function SystemDialogModal({
 
                 {/* Upper Heading Header Row */}
                 <div className="border-b border-slate-900 pb-2.5">
-                    <span className={`${currentAccent.text} font-black tracking-wider text-[10px] uppercase block mb-0.5`}>
+                    {/* <span className={`${currentAccent.text} font-black tracking-wider text-[10px] uppercase block mb-0.5`}>
                         ⚙️ SYSTEM DIALOG CONSOLE // {status.toUpperCase()}
-                    </span>
-                    <h4 className="text-sm font-black text-white uppercase tracking-wide leading-tight">
+                    </span> */}
+                    <h4 className={`${currentAccent.text} text-sm font-black uppercase tracking-wide leading-tight`}>
                         {title || 'OPERATION ALERT'}
                     </h4>
                 </div>
@@ -65,7 +65,7 @@ export default function SystemDialogModal({
                         <button
                             type="button"
                             onClick={onCancel}
-                            className="px-3.5 py-2 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-500 hover:text-slate-300 font-bold uppercase tracking-wider text-[10px] rounded-lg transition-colors cursor-pointer"
+                            className="px-3.5 py-2 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-500 hover:text-slate-300 font-bold uppercase tracking-wider text-[10px] rounded-lg transition-colors cursor-pointer stims-hover-glow"
                         >
                             Cancel
                         </button>

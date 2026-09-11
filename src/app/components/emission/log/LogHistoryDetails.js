@@ -1,13 +1,10 @@
-// src/app/components/emission/log/LogHistoryDetails.js
-
 'use client';
 
 import React, { useState } from 'react';
 import ExportModal from './ExportModal';
 import LogMetricsDisplay from './LogMetricsDisplay';
-import { generatePrintHtml } from '../../../utils/printTemplateHtml';
 
-export default function LogHistoryDetails({ inspectedLogNode, customVehicles, user }) {
+export default function LogHistoryDetails({ inspectedLogNode, customVehicles, user, onTogglePrintStatus }) {
     const [isExportOpen, setIsExportOpen] = useState(false);
 
     if (!inspectedLogNode) {
@@ -22,41 +19,10 @@ export default function LogHistoryDetails({ inspectedLogNode, customVehicles, us
     const activePlateLabel = matchingAssetNode?.registration_number || 'N/A';
     const payloadObject = typeof inspectedLogNode.raw_payload === 'string' ? JSON.parse(inspectedLogNode.raw_payload) : (inspectedLogNode.raw_payload || {});
 
-    const getPrintInputSummaryHtml = (log) => {
-        let htmlBuffer = '';
-        const cat = (log.category_display || '').toLowerCase();
-
-        if (log.input_distance && cat !== 'flight') htmlBuffer += `<div><strong>Distance:</strong> ${log.input_distance} ${log.input_unit || 'km'}</div>`;
-        if (log.cargo_weight) htmlBuffer += `<div><strong>Weight:</strong> ${log.cargo_weight} ${log.mass_unit || 'kg'}</div>`;
-        if (log.passengers_count) htmlBuffer += `<div><strong>Passengers:</strong> ${log.passengers_count} pax</div>`;
-        if (cat === 'flight') htmlBuffer += `<div><strong>Flight Route:</strong> ${payloadObject?.metadata?.route_display || log.origin_iata + ' - ' + log.dest_iata}</div>`;
-        if (log.energy_kwh) htmlBuffer += `<div><strong>Electricity:</strong> ${log.energy_kwh} kWh (Grid: ${log.country_code || 'ZA'})</div>`;
-        if (log.gas_quantity) htmlBuffer += `<div><strong>Gas:</strong> ${log.gas_quantity} ${log.gas_unit || 'm3'} (${log.gas_type || 'Natural Gas'})</div>`;
-        return htmlBuffer || '<div><strong>Details:</strong> Calculated data</div>';
-    };
-
-    const handlePrintLogPdf = () => {
-        const printWindowElement = document.createElement('iframe');
-        printWindowElement.style.position = 'fixed';
-        printWindowElement.style.width = '0';
-        printWindowElement.style.height = '0';
-        printWindowElement.style.border = 'none';
-        document.body.appendChild(printWindowElement);
-
-        const doc = printWindowElement.contentWindow.document;
-        doc.open();
-        doc.write(generatePrintHtml(inspectedLogNode, matchingAssetNode, activePlateLabel, getPrintInputSummaryHtml(inspectedLogNode)));
-        doc.close();
-
-        printWindowElement.contentWindow.focus();
-        setTimeout(() => {
-            printWindowElement.contentWindow.print();
-            document.body.removeChild(printWindowElement);
-        }, 400);
-    };
-
     const hasInputs = inspectedLogNode.input_distance || inspectedLogNode.cargo_weight || inspectedLogNode.passengers_count || inspectedLogNode.origin_iata || inspectedLogNode.energy_kwh || inspectedLogNode.gas_quantity;
     const currentCategory = (inspectedLogNode.category_display || '').toLowerCase();
+
+    const printStatus = inspectedLogNode.print_status || 'included';
 
     return (
         <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-lg min-h-[300px] flex flex-col justify-between font-mono relative">
@@ -66,17 +32,41 @@ export default function LogHistoryDetails({ inspectedLogNode, customVehicles, us
                         <span className="text-[9px] text-slate-500 block uppercase tracking-widest">Log Summary</span>
                         <span className="text-[10px] text-slate-400 select-all block truncate max-w-[140px]">{inspectedLogNode.id}</span>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => setIsExportOpen(true)}
-                        className="border border-blue-900 hover:border-blue-500 bg-blue-950/40 text-blue-400 hover:text-white text-[9px] font-bold py-1 px-2.5 rounded transition-all uppercase tracking-wider shrink-0 shadow-sm stims-hover-glow cursor-pointer"
-                    >
-                        🚀 Export
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => onTogglePrintStatus && onTogglePrintStatus(inspectedLogNode.id, printStatus)}
+                            className={`border text-[9px] font-bold py-1 px-2.5 rounded transition-all uppercase tracking-wider shadow-sm stims-hover-glow cursor-pointer ${printStatus === 'included'
+                                ? 'border-rose-900/60 bg-rose-950/30 text-rose-400 hover:text-white'
+                                : 'border-emerald-900/60 bg-emerald-950/30 text-emerald-400 hover:text-white'
+                                }`}
+                        >
+                            {printStatus === 'included' ? '🚫 Exclude' : '✅ Include'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsExportOpen(true)}
+                            className="border border-blue-900 hover:border-blue-500 bg-blue-950/40 text-blue-400 hover:text-white text-[9px] font-bold py-1 px-2.5 rounded transition-all uppercase tracking-wider shadow-sm stims-hover-glow cursor-pointer"
+                        >
+                            🚀 Export
+                        </button>
+                    </div>
                 </div>
 
                 <div className="space-y-1 text-slate-400">
-                    <div className="flex justify-between"><span>Category:</span><span className="text-slate-200 font-bold uppercase">{inspectedLogNode.category_display}</span></div>
+                    <div className="flex justify-between">
+                        <span>Category:</span>
+                        <span className="text-slate-200 font-bold uppercase">{inspectedLogNode.category_display}</span>
+                    </div>
+
+                    {/* Label changed to Print status and dots stripped entirely */}
+                    <div className="flex justify-between">
+                        <span>Print status:</span>
+                        <span className={`font-bold uppercase tracking-wider ${printStatus === 'included' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {printStatus}
+                        </span>
+                    </div>
+
                     {matchingAssetNode && <div className="flex justify-between"><span>License Plate:</span><span className="text-blue-400 font-bold uppercase">{activePlateLabel}</span></div>}
                     <div className="flex justify-between"><span>Date:</span><span className="text-slate-300 font-bold">{new Date(inspectedLogNode.emission_date).toLocaleDateString('en-ZA')}</span></div>
 
