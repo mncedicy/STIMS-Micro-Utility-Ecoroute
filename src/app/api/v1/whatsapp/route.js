@@ -1,13 +1,7 @@
 // File Location: src/app/api/v1/whatsapp/route.js
 
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase Client with Service Role Key to bypass RLS
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://YOUR_SUPABASE_PROJECT.supabase.co',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || 'YOUR_SUPABASE_SERVICE_ROLE_KEY'
-);
+import { supabaseAdmin } from '@/app/lib/supabaseAdminServer';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -70,7 +64,7 @@ export async function POST(req) {
         const messageNode = valueBlock.messages[0];
         const metadataNode = valueBlock.metadata || {};
 
-        const cleanPhoneNumber = messageNode.from; // e.g., "27784884519"
+        const cleanPhoneNumber = String(messageNode.from || '').trim(); // e.g. "27784884519"
         const businessPhoneNumberId = metadataNode.phone_number_id || "1307900412406936";
 
         if (messageNode.type !== 'text') {
@@ -80,21 +74,36 @@ export async function POST(req) {
 
         const incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
 
-        // Phone Variations: "27784884519", "+27784884519", "0784884519"
+        // Variations setup
         const rawPhone = cleanPhoneNumber;
         const plusPhone = `+${rawPhone}`;
         const localPhone = rawPhone.startsWith('27') ? `0${rawPhone.slice(2)}` : rawPhone;
 
-        // Query profiles using fallback array search
-        const { data: userProfiles, error: profileError } = await supabaseAdmin
+        const targetNumbers = [rawPhone, plusPhone, localPhone];
+        console.log('🔍 [Database Query Target Numbers]:', targetNumbers);
+
+        // 1. Primary Array Match Query
+        let { data: userProfiles, error: profileError } = await supabaseAdmin
             .from('profiles')
             .select('id, first_name, company, phone_number')
-            .in('phone_number', [rawPhone, plusPhone, localPhone]);
+            .in('phone_number', targetNumbers);
+
+        // 2. Fallback Substring / ILIKE Match Query (if exact match yields empty array)
+        if (!userProfiles || userProfiles.length === 0) {
+            console.warn('⚠️ Standard .in() check failed. Attempting ILIKE fallback search...');
+            const { data: fallbackProfiles, error: fallbackError } = await supabaseAdmin
+                .from('profiles')
+                .select('id, first_name, company, phone_number')
+                .ilike('phone_number', `%${localPhone.slice(-9)}%`);
+
+            userProfiles = fallbackProfiles;
+            profileError = fallbackError;
+        }
 
         const userProfile = userProfiles?.[0];
 
         if (profileError || !userProfile) {
-            console.warn(`⚠️ Profile lookup failed for numbers: ${rawPhone}, ${plusPhone}, ${localPhone}`);
+            console.error(`❌ Profile Lookup Failed. DB Error:`, profileError);
             await sendMetaWhatsappMessage(
                 businessPhoneNumberId,
                 cleanPhoneNumber,
@@ -103,7 +112,9 @@ export async function POST(req) {
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
-        // Fetch user token quota
+        console.log(`✅ [Profile Matched]: ${userProfile.first_name || 'User'} (${userProfile.id})`);
+
+        // Fetch User Token Quota
         const { data: tokenRecord } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .select('*')
