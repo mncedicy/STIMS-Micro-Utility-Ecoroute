@@ -1,8 +1,8 @@
 // src/app/api/v1/whatsapp/commandParser.js
 
-import { processCategoryEmissions } from '../../../estimates/categoryPipeline';
+import { processCategoryEmissions } from '@/app/api/estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
-import { runEmissionsPipeline } from '../../../estimates/pipelineService';
+import { runEmissionsPipeline } from '@/app/api/estimates/pipelineService';
 import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
