@@ -14,7 +14,7 @@ const supabaseAdmin = createClient(
 export const dynamic = 'force-dynamic';
 
 /**
- * 1. META WEBHOOK HANDSHAKE VERIFICATION (GET)
+ * 1. FIXED META WEBHOOK HANDSHAKE VERIFICATION (GET)
  */
 export async function GET(req) {
     try {
@@ -23,15 +23,26 @@ export async function GET(req) {
         const token = searchParams.get('hub.verify_token');
         const challenge = searchParams.get('hub.challenge');
 
-        const localVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN || 'ecoroute_secret_handshake';
+        const localVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN || 'ecoroute_secure_handshake';
+
+        console.log(`[WhatsApp Handshake Diagnostic]: Mode: ${mode}, Token Received: ${token}`);
 
         if (mode === 'subscribe' && token === localVerifyToken) {
             console.log('📌 Meta WhatsApp Webhook Handshake verified successfully.');
-            return new NextResponse(challenge, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+            // Enforces strict plain text return format demanded by Meta servers
+            return new Response(challenge, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'text/plain',
+                    'Content-Length': String(challenge?.length || 0)
+                }
+            });
         }
 
+        console.warn('❌ Handshake verification token failed to match local rule.');
         return NextResponse.json({ error: 'Forbidden handshake signature matching failure.' }, { status: 403 });
     } catch (err) {
+        console.error('🚨 Handshake internal error:', err.message);
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }
@@ -41,18 +52,15 @@ export async function GET(req) {
  */
 export async function POST(req) {
     try {
-        // Extract raw string text stream immediately to prevent payload mutation errors
         const rawBodyText = await req.text();
         const signatureHeader = req.headers.get('x-hub-signature-256') || '';
 
-        // SECURE GATEKEEPER CHECK: Validates incoming request source authenticity
         const isVerifiedSource = verifyMetaWebhookSignature(rawBodyText, signatureHeader);
         if (!isVerifiedSource) {
             console.error('🚫 [Security Block]: Webhook block triggered. Request failed signature validation matching.');
             return NextResponse.json({ error: 'Unauthorized payload origin signature mismatched.' }, { status: 401 });
         }
 
-        // Safely parse JSON structure once origin source is authenticated
         const body = JSON.parse(rawBodyText);
 
         if (!body.object || !body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
@@ -73,7 +81,6 @@ export async function POST(req) {
 
         const incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
 
-        // A. Authenticate user profile using active phone mapping index lookup
         const { data: userProfile, error: profileError } = await supabaseAdmin
             .from('profiles')
             .select('id, first_name, company')
@@ -85,7 +92,6 @@ export async function POST(req) {
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
-        // Fetch corporate API metadata token limits for quota tracking checks
         const { data: tokenRecord } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .select('*')
@@ -100,7 +106,6 @@ export async function POST(req) {
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
-        // B. Offload calculation string parsing out to the modular parser script
         await handleIncomingCommand({
             incomingMessage,
             userProfile,
