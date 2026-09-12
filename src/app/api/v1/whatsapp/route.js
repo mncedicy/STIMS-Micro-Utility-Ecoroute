@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { handleIncomingCommand } from './commandParser';
 import { sendMetaWhatsappMessage } from './metaClient';
+import { verifyMetaWebhookSignature } from './security';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -40,7 +41,19 @@ export async function GET(req) {
  */
 export async function POST(req) {
     try {
-        const body = await req.json();
+        // Extract raw string text stream immediately to prevent payload mutation errors
+        const rawBodyText = await req.text();
+        const signatureHeader = req.headers.get('x-hub-signature-256') || '';
+
+        // SECURE GATEKEEPER CHECK: Validates incoming request source authenticity
+        const isVerifiedSource = verifyMetaWebhookSignature(rawBodyText, signatureHeader);
+        if (!isVerifiedSource) {
+            console.error('🚫 [Security Block]: Webhook block triggered. Request failed signature validation matching.');
+            return NextResponse.json({ error: 'Unauthorized payload origin signature mismatched.' }, { status: 401 });
+        }
+
+        // Safely parse JSON structure once origin source is authenticated
+        const body = JSON.parse(rawBodyText);
 
         if (!body.object || !body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
             return NextResponse.json({ success: true, status: 'SKIPPED_EVENT_MUTATION' }, { status: 200 });
@@ -60,7 +73,7 @@ export async function POST(req) {
 
         const incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
 
-        // A. Authenticate user profile using phone numbers row mapping lookup
+        // A. Authenticate user profile using active phone mapping index lookup
         const { data: userProfile, error: profileError } = await supabaseAdmin
             .from('profiles')
             .select('id, first_name, company')
@@ -72,7 +85,7 @@ export async function POST(req) {
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
-        // Fetch corporate API tokens quota rows for usage restriction checking
+        // Fetch corporate API metadata token limits for quota tracking checks
         const { data: tokenRecord } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .select('*')
@@ -87,7 +100,7 @@ export async function POST(req) {
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
-        // B. Offload calculation string matches out to the decoupled parser module
+        // B. Offload calculation string parsing out to the modular parser script
         await handleIncomingCommand({
             incomingMessage,
             userProfile,
@@ -103,6 +116,6 @@ export async function POST(req) {
 
     } catch (err) {
         console.error('🚨 WhatsApp Meta Gateway Crash Exception:', err.message);
-        return NextResponse.json({ error: 'Internal channel pipeline disruption' }, { status: 500 });
+        return NextResponse.json({ error: 'Internal channel pipeline disruption: ' + err.message }, { status: 500 });
     }
 }
