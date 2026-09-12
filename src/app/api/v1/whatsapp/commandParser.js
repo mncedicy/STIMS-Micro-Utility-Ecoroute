@@ -1,4 +1,4 @@
-// src/app/api/v1/whatsapp/commandParser.js
+// File Location: src/app/api/v1/whatsapp/commandParser.js
 
 import { processCategoryEmissions } from '@/app/api/estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';

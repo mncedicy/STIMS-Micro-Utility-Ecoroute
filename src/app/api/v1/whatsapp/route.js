@@ -1,4 +1,4 @@
-// src/app/api/v1/whatsapp/route.js
+// File Location: src/app/api/v1/whatsapp/route.js
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -20,15 +20,13 @@ export async function GET(req) {
         const token = searchParams.get('hub.verify_token');
         const challenge = searchParams.get('hub.challenge');
 
-        // Bypasses Vercel env cache sync latency to ensure an instant handshake verification match
-        const localVerifyToken = 'ecoroute_secure_handshake';
+        const localVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
 
         console.log(`[WhatsApp Handshake Diagnostic]: Mode: ${mode}, Token Recv: ${token}`);
 
         if (mode === 'subscribe' && token === localVerifyToken) {
             console.log('📌 Meta WhatsApp Webhook Handshake verified successfully.');
 
-            // Explicit plain text response format mandated by Meta specifications
             return new Response(challenge, {
                 status: 200,
                 headers: {
@@ -50,7 +48,6 @@ export async function GET(req) {
  */
 export async function POST(req) {
     try {
-        // Dynamic lazy loading to prevent initialization circular dependency loops inside Next.js
         const { handleIncomingCommand } = await import('./commandParser');
         const { verifyMetaWebhookSignature } = await import('./security');
         const { sendMetaWhatsappMessage } = await import('./metaClient');
@@ -66,7 +63,6 @@ export async function POST(req) {
 
         const body = JSON.parse(rawBodyText);
 
-        // FIXED: Replaced trailing optional chaining operators with strict valid array parameter matrix evaluation bounds
         if (!body.object || !body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
             return NextResponse.json({ success: true, status: 'SKIPPED_EVENT_MUTATION' }, { status: 200 });
         }

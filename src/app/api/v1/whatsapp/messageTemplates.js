@@ -1,4 +1,4 @@
-// src/app/api/v1/whatsapp/messageTemplates.js
+// File Location: src/app/api/v1/whatsapp/messageTemplates.js
 
 export function buildAuditCardString(userName, categoryTitle, inputTrace, conversions, capacity, usage) {
     return `🌱 *EcoRoute Audit Verified* 🌱\n\n` +

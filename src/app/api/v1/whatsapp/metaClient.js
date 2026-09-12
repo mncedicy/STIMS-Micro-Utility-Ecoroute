@@ -1,7 +1,7 @@
-// src/app/api/v1/whatsapp/metaClient.js
+// File Location: src/app/api/v1/whatsapp/metaClient.js
 
 export async function sendMetaWhatsappMessage(phoneId, recipientMobile, messageStringText) {
-    const metaCloudAccessToken = 'EAAXr1581WfABSe9oPIEXie4cfyc33M4FckNIsJf51NEXrQZCttcjynricdFMz5Ta8bBQClZB6uoNPnq0AoUoZAVo1WMjWZBZAo0RJweLSH1tSLIicIsJaPPBPLcyOhVGZCgZBrxk4GAkyvy5ZBMaoHZBpAs0ZBErCoigA1raSdZBDwSVcGvqnWggQBlaJlYW0FsYMBiXPFeCxQEZAA0cg1kb3CZBVvlZCMo6UtQVftmo3AxsPZBWYPwFK52aWcMBxVntZBvoZCUmhiZBNNhcR4b2W8smxkbr9pZAEQZCR5JodfW7ZAQZDZD';
+    const metaCloudAccessToken = process.env.WHATSAPP_META_ACCESS_TOKEN;
     const graphApiVersionUrl = `https://graph.facebook.com/v25.0/${phoneId}/messages`;
 
     if (!metaCloudAccessToken || !phoneId) {
