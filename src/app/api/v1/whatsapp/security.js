@@ -5,14 +5,13 @@ import crypto from 'crypto';
 export function verifyMetaWebhookSignature(rawBody, signatureHeader) {
     const appSecret = process.env.WHATSAPP_APP_SECRET;
 
-    // TEMPORARY: If APP_SECRET is missing in env, log a warning & allow sandbox testing
     if (!appSecret) {
-        console.warn('⚠️ WHATSAPP_APP_SECRET environment variable is missing. Bypassing signature check for test.');
+        console.warn('⚠️ [Security]: WHATSAPP_APP_SECRET environment variable is not set. Bypassing check for testing.');
         return true;
     }
 
     if (!signatureHeader) {
-        console.warn('⚠️ Missing x-hub-signature-256 header.');
+        console.warn('⚠️ [Security]: Request missing x-hub-signature-256 header.');
         return false;
     }
 
@@ -26,7 +25,7 @@ export function verifyMetaWebhookSignature(rawBody, signatureHeader) {
 
     const isValid = signatureHash === expectedHash;
     if (!isValid) {
-        console.warn(`❌ Signature Mismatch. Expected ${expectedHash}, got ${signatureHash}`);
+        console.warn(`❌ [Security Mismatch]: Expected ${expectedHash}, received ${signatureHash}`);
     }
 
     return isValid;

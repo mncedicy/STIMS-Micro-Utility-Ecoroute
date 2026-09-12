@@ -5,12 +5,12 @@ export async function sendMetaWhatsappMessage(phoneId, recipientMobile, messageS
     const graphApiVersionUrl = `https://graph.facebook.com/v25.0/${phoneId}/messages`;
 
     if (!metaCloudAccessToken || !phoneId) {
-        console.warn('⚠️ [Meta Interface Link Fault]: Missing configuration token values.');
+        console.error(`⚠️ [Meta Client Fault]: Missing access token or phoneId. phoneId=${phoneId}, tokenExists=${!!metaCloudAccessToken}`);
         return;
     }
 
     try {
-        await fetch(graphApiVersionUrl, {
+        const response = await fetch(graphApiVersionUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${metaCloudAccessToken}`,
@@ -24,6 +24,13 @@ export async function sendMetaWhatsappMessage(phoneId, recipientMobile, messageS
                 text: { preview_url: false, body: messageStringText }
             })
         });
+
+        const resData = await response.json();
+        if (!response.ok) {
+            console.error('🚨 [Meta Graph API Error]:', JSON.stringify(resData));
+        } else {
+            console.log('✅ [WhatsApp Reply Sent]:', resData);
+        }
     } catch (fetchNetworkError) {
         console.error('🚨 [Meta Graph HTTP Post Fail]:', fetchNetworkError.message);
     }
