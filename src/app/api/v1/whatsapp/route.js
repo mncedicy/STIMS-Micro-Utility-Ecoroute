@@ -3,9 +3,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Initialize Supabase Client with Service Role Key to bypass RLS
 const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://YOUR_SUPABASE_PROJECT.supabase.co',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || 'YOUR_SUPABASE_SERVICE_ROLE_KEY'
 );
 
 export const dynamic = 'force-dynamic';
@@ -21,17 +22,12 @@ export async function GET(req) {
         const token = searchParams.get('hub.verify_token');
         const challenge = searchParams.get('hub.challenge');
 
-        // HARDCODED VERIFY TOKEN FOR TESTING
         const fallbackToken = 'ecoroute_secret_handshake';
         const envToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim();
-
-        console.log(`[WhatsApp Handshake]: Mode=${mode} | Token Received=${token}`);
 
         const isTokenValid = (token === fallbackToken) || (envToken && token === envToken);
 
         if (mode === 'subscribe' && isTokenValid) {
-            console.log('📌 Meta WhatsApp Webhook Handshake verified successfully.');
-
             return new Response(String(challenge), {
                 status: 200,
                 headers: {
@@ -41,10 +37,8 @@ export async function GET(req) {
             });
         }
 
-        console.warn(`❌ Handshake Token Mismatch. Expected '${fallbackToken}', got '${token}'`);
         return new Response('Forbidden', { status: 403 });
     } catch (err) {
-        console.error('🚨 Handshake error:', err.message);
         return new Response(err.message, { status: 500 });
     }
 }
@@ -63,47 +57,53 @@ export async function POST(req) {
 
         const isVerifiedSource = verifyMetaWebhookSignature(rawBodyText, signatureHeader);
         if (!isVerifiedSource) {
-            console.error('🚫 [Security Block]: Request failed signature validation matching.');
-            return NextResponse.json({ error: 'Unauthorized payload origin signature mismatched.' }, { status: 401 });
+            return NextResponse.json({ error: 'Unauthorized signature.' }, { status: 401 });
         }
 
         const body = JSON.parse(rawBodyText);
 
         if (!body.object || !body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
-            return NextResponse.json({ success: true, status: 'SKIPPED_EVENT_MUTATION' }, { status: 200 });
+            return NextResponse.json({ success: true, status: 'SKIPPED_EVENT' }, { status: 200 });
         }
 
         const valueBlock = body.entry[0].changes[0].value;
         const messageNode = valueBlock.messages[0];
         const metadataNode = valueBlock.metadata || {};
 
-        const cleanPhoneNumber = messageNode.from;
+        const cleanPhoneNumber = messageNode.from; // e.g., "27784884519"
         const businessPhoneNumberId = metadataNode.phone_number_id || "1307900412406936";
 
         if (messageNode.type !== 'text') {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: System accepts plain text parameters only.");
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: Plain text commands only.");
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
         const incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
 
-        // Phone variations matching (e.g. Meta sends 27784884519; database might store +27784884519 or 0784884519)
+        // Phone Variations: "27784884519", "+27784884519", "0784884519"
         const rawPhone = cleanPhoneNumber;
         const plusPhone = `+${rawPhone}`;
         const localPhone = rawPhone.startsWith('27') ? `0${rawPhone.slice(2)}` : rawPhone;
 
-        const { data: userProfile, error: profileError } = await supabaseAdmin
+        // Query profiles using fallback array search
+        const { data: userProfiles, error: profileError } = await supabaseAdmin
             .from('profiles')
-            .select('id, first_name, company')
-            .or(`phone_number.eq.${rawPhone},phone_number.eq.${plusPhone},phone_number.eq.${localPhone}`)
-            .maybeSingle();
+            .select('id, first_name, company, phone_number')
+            .in('phone_number', [rawPhone, plusPhone, localPhone]);
+
+        const userProfile = userProfiles?.[0];
 
         if (profileError || !userProfile) {
-            console.warn(`⚠️ User profile not found for phone number: ${cleanPhoneNumber}`);
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: Your mobile number is not registered. Please link this number in your settings.");
+            console.warn(`⚠️ Profile lookup failed for numbers: ${rawPhone}, ${plusPhone}, ${localPhone}`);
+            await sendMetaWhatsappMessage(
+                businessPhoneNumberId,
+                cleanPhoneNumber,
+                "EcoRoute Guard: Your mobile number is not registered. Please link this number in your settings."
+            );
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
+        // Fetch user token quota
         const { data: tokenRecord } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .select('*')
@@ -132,7 +132,7 @@ export async function POST(req) {
         return NextResponse.json({ success: true }, { status: 200 });
 
     } catch (err) {
-        console.error('🚨 WhatsApp Meta Gateway Crash Exception:', err.message);
-        return NextResponse.json({ error: 'Internal channel pipeline disruption: ' + err.message }, { status: 500 });
+        console.error('🚨 Webhook Error:', err.message);
+        return NextResponse.json({ error: 'Internal Server Error: ' + err.message }, { status: 500 });
     }
 }
