@@ -1,8 +1,7 @@
 // src/app/api/v1/whatsapp/metaClient.js
 
 export async function sendMetaWhatsappMessage(phoneId, recipientMobile, messageStringText) {
-    // const metaCloudAccessToken = process.env.WHATSAPP_META_ACCESS_TOKEN || '';
-    const metaCloudAccessToken = "EAAXr1581WfABSWdvZCYbghkPwDUCiDVXZAHTv4lNdB1C3ExLz8KVeSHls3IS6k2tMFZCAgXpSNDduSZBiX5ddqRx5HTBTPMoe8IgVhhcOmOUFYN5n3OfOHU1xGOUtmoZCpUA1am0UTIVMS7xDOod5hAHIFQNQZANPK72uVJJFpNsitjSZBb1U6icr4LxlYBNeR72WamrmoZChAznKsWpV2vIQg4aBM7LyhK5RKlWtYw3R2Ujn0nR9jSZCjVYGUKQSTViPFefqFeMYZCjqEhxUJydp3J63JQ6ENDdaItgZDZD";
+    const metaCloudAccessToken = process.env.WHATSAPP_META_ACCESS_TOKEN || '';
     const graphApiVersionUrl = `https://graph.facebook.com/v25.0/${phoneId}/messages`;
 
     if (!metaCloudAccessToken || !phoneId) {
