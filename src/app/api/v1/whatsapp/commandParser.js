@@ -43,7 +43,7 @@ export async function handleIncomingCommand({
             appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL'
         });
 
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog.vehicleProfile || vehicleId}`, `${distance} ${unit.toUpperCase()}`, conversionsPayload, usageCap, currentUsage));
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || vehicleId}`, `${distance} ${unit.toUpperCase()}`, conversionsPayload, usageCap, currentUsage));
         return;
     }
 

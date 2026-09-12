@@ -3,7 +3,8 @@
 import crypto from 'crypto';
 
 export function verifyMetaWebhookSignature(rawBody, signatureHeader) {
-    const appSecret = process.env.WHATSAPP_APP_SECRET;
+    // HARDCODED APP SECRET FOR TESTING
+    const appSecret = "75f43d75c292f7f143cc843934756bec";
 
     if (!appSecret) {
         console.warn('⚠️ [Security]: WHATSAPP_APP_SECRET environment variable is not set. Bypassing check for testing.');

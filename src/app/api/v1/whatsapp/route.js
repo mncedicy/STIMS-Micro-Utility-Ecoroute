@@ -21,10 +21,11 @@ export async function GET(req) {
         const token = searchParams.get('hub.verify_token');
         const challenge = searchParams.get('hub.challenge');
 
-        const envToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim();
+        // HARDCODED VERIFY TOKEN FOR TESTING
         const fallbackToken = 'ecoroute_secret_handshake';
+        const envToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim();
 
-        console.log(`[WhatsApp Handshake]: Mode=${mode} | Token Received=${token} | Env Token=${envToken}`);
+        console.log(`[WhatsApp Handshake]: Mode=${mode} | Token Received=${token}`);
 
         const isTokenValid = (token === fallbackToken) || (envToken && token === envToken);
 
@@ -40,7 +41,7 @@ export async function GET(req) {
             });
         }
 
-        console.warn(`❌ Handshake Token Mismatch. Expected '${envToken || fallbackToken}', got '${token}'`);
+        console.warn(`❌ Handshake Token Mismatch. Expected '${fallbackToken}', got '${token}'`);
         return new Response('Forbidden', { status: 403 });
     } catch (err) {
         console.error('🚨 Handshake error:', err.message);
@@ -77,7 +78,7 @@ export async function POST(req) {
         const metadataNode = valueBlock.metadata || {};
 
         const cleanPhoneNumber = messageNode.from;
-        const businessPhoneNumberId = metadataNode.phone_number_id;
+        const businessPhoneNumberId = metadataNode.phone_number_id || "1307900412406936";
 
         if (messageNode.type !== 'text') {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: System accepts plain text parameters only.");
