@@ -11,8 +11,8 @@ import crypto from 'crypto';
  * @returns {boolean} True if the calculated signature matches Meta's header perfectly.
  */
 export function verifyMetaWebhookSignature(rawBodyString, signatureHeader) {
-    const appSecret = process.env.WHATSAPP_APP_SECRET;
-
+    // const appSecret = process.env.WHATSAPP_APP_SECRET;
+    const appSecret = "75f43d75c292f7f143cc843934756bec";
     // Fail immediately if security credentials are missing or signature is omitted
     if (!appSecret || !signatureHeader) {
         console.warn('⚠️ [Webhook Security Alert]: Validation bypassed due to missing context.');
