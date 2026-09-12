@@ -9,7 +9,19 @@ const supabaseAdmin = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-export async function runEmissionsPipeline({ user, cleanType, body, conversionsPayload, metadataLog, appMetaRes, tokenQuery, profRes, currentUsageCount }) {
+export async function runEmissionsPipeline({
+    user,
+    cleanType,
+    body,
+    conversionsPayload,
+    metadataLog,
+    appMetaRes,
+    tokenQuery,
+    profRes,
+    currentUsageCount,
+    incomingReferenceId = null,
+    logSourceChannel = 'WEB_DASHBOARD'
+}) {
     const resolvedEmissionDate = body.emission_date && /^\d{4}-\d{2}-\d{2}$/.test(body.emission_date)
         ? body.emission_date
         : new Date().toISOString().split('T')[0];
@@ -24,7 +36,8 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
         costCenterAssigned: sanitizedCostCenter,
         totalDurationSeconds: body.osrm_total_duration || 0,
         tripLegsArray: body.osrm_legs_data || [],
-        waypointsArray: body.osrm_waypoints_data || []
+        waypointsArray: body.osrm_waypoints_data || [],
+        processedViaSecureTunnel: logSourceChannel === 'ENTERPRISE_API_TUNNEL'
     };
 
     console.log('[Pipeline Service] Emission Calculation Log:', {
@@ -33,58 +46,88 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
         ...finalMetadataBlock
     });
 
-    // 1. Write transactional audit log record entry
-    const { data: dbLogEntry, error: dbWriteError } = await supabaseAdmin
-        .from('ecoroute_emissions_logs')
-        .insert({
-            user_id: user.id,
-            vehicle_id: cleanType === 'vehicle' ? body.vehicle_id : null,
-            category_display: body.type.toUpperCase(),
-            carbon_kg: conversionsPayload.carbon_kg,
-            carbon_g: conversionsPayload.carbon_g,
-            carbon_mt: conversionsPayload.carbon_mt,
-            carbon_lb: conversionsPayload.carbon_lb,
-            input_distance: ['vehicle', 'shipping'].includes(cleanType) ? parseFloat(body.distance) : null,
-            input_unit: ['vehicle', 'shipping'].includes(cleanType) ? body.unit : null,
-            origin_iata: cleanType === 'flight' ? body.origin_iata?.substring(0, 3).toUpperCase() : null,
-            dest_iata: cleanType === 'flight' ? body.dest_iata?.substring(0, 3).toUpperCase() : null,
-            passengers_count: cleanType === 'flight' ? parseInt(body.passengers, 10) : null,
-            cargo_weight: cleanType === 'shipping' ? parseFloat(body.cargo_weight) : null,
-            mass_unit: cleanType === 'shipping' ? body.mass_unit : null,
-            // Maps shipping mechanics when routing freight, falls back to capturing power mix sources if active category is electricity
-            shipping_mode: cleanType === 'shipping' ? (body.shipping_mode || metadataLog?.shipping_mode || 'standard') : cleanType === 'electricity' ? (body.power_source || 'utility_grid') : null,
-            energy_kwh: cleanType === 'electricity' ? parseFloat(body.kwh) : null,
-            country_code: cleanType === 'electricity' ? body.country_code?.toUpperCase() : null,
-            gas_quantity: cleanType === 'gas' ? parseFloat(body.quantity) : null,
-            gas_type: body.gas_type || 'NATURAL_GAS',
-            gas_unit: body.gas_unit || 'm3',
-            emission_date: resolvedEmissionDate,
-            cost_center: sanitizedCostCenter,
-            raw_payload: {
-                ...conversionsPayload,
-                metadata: finalMetadataBlock,
-                global_flight_route: cleanType === 'flight' ? { origin_name_full: body.origin_iata, destination_name_full: body.dest_iata } : null
-            }
-        })
-        .select()
-        .single();
+    let dbLogEntry = null;
+    let dbWriteError = null;
+    let isDuplicateOverride = false;
 
-    console.log('[ecoroute_emissions_logs] Emission Calculation Log:', {
-        dbLogEntry: dbLogEntry,
-        dbWriteError: dbWriteError
+    // Idempotency check for external automated enterprise manifest streams
+    if (incomingReferenceId) {
+        const { data: existingMatch } = await supabaseAdmin
+            .from('ecoroute_emissions_logs')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('batch_manifest_row_id', incomingReferenceId)
+            .maybeSingle();
+
+        if (existingMatch) {
+            isDuplicateOverride = true;
+            dbLogEntry = existingMatch;
+            console.log('[Pipeline Service] Idempotent trigger caught duplicate match:', incomingReferenceId);
+        }
+    }
+
+    // 1. Write transactional audit log record entry if not a duplicate
+    if (!isDuplicateOverride) {
+        const { data: insertedEntry, error: writeError } = await supabaseAdmin
+            .from('ecoroute_emissions_logs')
+            .insert({
+                user_id: user.id,
+                batch_manifest_row_id: incomingReferenceId,
+                vehicle_id: cleanType === 'vehicle' ? body.vehicle_id : null,
+                category_display: body.type.toUpperCase(),
+                carbon_kg: conversionsPayload.carbon_kg,
+                carbon_g: conversionsPayload.carbon_g,
+                carbon_mt: conversionsPayload.carbon_mt,
+                carbon_lb: conversionsPayload.carbon_lb,
+                input_distance: ['vehicle', 'shipping'].includes(cleanType) ? parseFloat(body.distance) : null,
+                input_unit: ['vehicle', 'shipping'].includes(cleanType) ? body.unit : null,
+                origin_iata: cleanType === 'flight' ? body.origin_iata?.substring(0, 3).toUpperCase() : null,
+                dest_iata: cleanType === 'flight' ? body.dest_iata?.substring(0, 3).toUpperCase() : null,
+                passengers_count: cleanType === 'flight' ? parseInt(body.passengers, 10) : null,
+                cargo_weight: cleanType === 'shipping' ? parseFloat(body.cargo_weight) : null,
+                mass_unit: cleanType === 'shipping' ? body.mass_unit : null,
+                shipping_mode: cleanType === 'shipping' ? (body.shipping_mode || metadataLog?.shipping_mode || 'standard') : cleanType === 'electricity' ? (body.power_source || 'utility_grid') : null,
+                energy_kwh: cleanType === 'electricity' ? parseFloat(body.kwh) : null,
+                country_code: cleanType === 'electricity' ? body.country_code?.toUpperCase() : null,
+                gas_quantity: cleanType === 'gas' ? parseFloat(body.quantity) : null,
+                gas_type: body.gas_type || 'NATURAL_GAS',
+                gas_unit: body.gas_unit || 'm3',
+                emission_date: resolvedEmissionDate,
+                cost_center: sanitizedCostCenter,
+                log_source_channel: logSourceChannel,
+                raw_payload: {
+                    ...conversionsPayload,
+                    metadata: finalMetadataBlock,
+                    global_flight_route: cleanType === 'flight' ? { origin_name_full: body.origin_iata, destination_name_full: body.dest_iata } : null
+                }
+            })
+            .select()
+            .single();
+
+        dbLogEntry = insertedEntry;
+        dbWriteError = writeError;
+
+        if (dbWriteError) throw new Error(`Database policy restriction: ${dbWriteError.message}`);
+    }
+
+    console.log('[ecoroute_emissions_logs] Emission Calculation Log Summary:', {
+        dbLogEntryId: dbLogEntry?.id,
+        isDuplicateOverride: isDuplicateOverride
     });
-
-    if (dbWriteError) throw new Error(`Database policy restriction: ${dbWriteError.message}`);
 
     // 2. Compute Tax Ledger Accruals (Phase 2 SARS Regime Calculations)
     const taxRatePerTon = parseFloat(appMetaRes.data?.carbon_tax_rate_zar_per_tonne || 190.00);
     const freeAllowancePercent = parseFloat(appMetaRes.data?.carbon_tax_free_allowance_percentage || 60.00);
     const incrementalTonnes = parseFloat(conversionsPayload.carbon_mt || 0);
     const taxableTonnesFactor = incrementalTonnes * (1 - (freeAllowancePercent / 100));
-    const incrementalTaxLiabilityZar = taxableTonnesFactor * taxRatePerTon;
+
+    // API custom scaling check mimicking route configuration rules
+    const addedTaxLiability = logSourceChannel === 'ENTERPRISE_API_TUNNEL'
+        ? (conversionsPayload.carbon_kg * 0.15)
+        : (taxableTonnesFactor * taxRatePerTon);
 
     const baselineAccruedTaxZar = parseFloat(tokenQuery.data?.total_accrued_tax_liability_zar || 0.00);
-    const nextUpdatedTaxLiabilityTotalZar = baselineAccruedTaxZar + incrementalTaxLiabilityZar;
+    const nextUpdatedTaxLiabilityTotalZar = baselineAccruedTaxZar + addedTaxLiability;
     const nextUsageCountValue = currentUsageCount + 1;
 
     const resolvedEnterpriseName = profRes.data?.company?.trim() || `${profRes.data?.first_name || 'Independent'} ${profRes.data?.surname || 'Enterprise'}`.trim();
@@ -109,14 +152,32 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
 
     // 3. Dispatch Corporate Notification Webhooks
     try {
-        const usageCap = updatedTokenRecord?.usage_limit_cap || 100;
-        if ((nextUsageCountValue / usageCap) >= 0.95 && (currentUsageCount / usageCap) < 0.95) {
-            await dispatchCorporateWebhook(user.id, 'quota_exhaustion_warning', { threshold_reached: '95%', current_usage: nextUsageCountValue, quota_limit: usageCap });
+        if (!isDuplicateOverride) {
+            const usageCap = updatedTokenRecord?.usage_limit_cap || 100;
+            if ((nextUsageCountValue / usageCap) >= 0.95 && (currentUsageCount / usageCap) < 0.95) {
+                await dispatchCorporateWebhook(user.id, 'quota_exhaustion_warning', {
+                    threshold_reached: '95%',
+                    message: "Sent when your monthly request quota is running low (95% consumed), preventing sudden data integration blind spots.",
+                    current_usage: nextUsageCountValue,
+                    quota_limit: usageCap
+                });
+            }
+            if (nextUpdatedTaxLiabilityTotalZar >= 17000.00 && baselineAccruedTaxZar < 17000.00) {
+                await dispatchCorporateWebhook(user.id, 'carbon_threshold_alert', {
+                    threshold_reached: '85%',
+                    message: "Triggered immediately when aggregate corporate monthly carbon emissions cross 85% of your configured sustainability budget cap.",
+                    accrued_tax_zar: parseFloat(nextUpdatedTaxLiabilityTotalZar.toFixed(2)),
+                    threshold_limit_zar: 20000.00
+                });
+            }
+            await dispatchCorporateWebhook(user.id, 'audit.saved', {
+                log_record_id: dbLogEntry.id,
+                category: cleanType.toUpperCase(),
+                carbon_kg: conversionsPayload.carbon_kg,
+                cost_center: sanitizedCostCenter,
+                emission_date: resolvedEmissionDate
+            });
         }
-        if (nextUpdatedTaxLiabilityTotalZar >= 17000.00 && baselineAccruedTaxZar < 17000.00) {
-            await dispatchCorporateWebhook(user.id, 'carbon_threshold_alert', { threshold_reached: '85%', accrued_tax_zar: parseFloat(nextUpdatedTaxLiabilityTotalZar.toFixed(2)), threshold_limit_zar: 20000.00 });
-        }
-        await dispatchCorporateWebhook(user.id, 'audit.saved', { log_record_id: dbLogEntry.id, category: cleanType.toUpperCase(), carbon_kg: conversionsPayload.carbon_kg, cost_center: sanitizedCostCenter, emission_date: resolvedEmissionDate });
     } catch (e) {
         console.warn('⚠️ Webhook bypassed:', e.message);
     }
@@ -126,5 +187,9 @@ export async function runEmissionsPipeline({ user, cleanType, body, conversionsP
         revalidatePath('/dashboard');
     } catch { }
 
-    return { ...dbLogEntry, tokenRecord: updatedTokenRecord };
+    return {
+        ...dbLogEntry,
+        tokenRecord: updatedTokenRecord,
+        isDuplicateOverride
+    };
 }

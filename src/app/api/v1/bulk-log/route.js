@@ -45,7 +45,7 @@ export async function POST(req) {
 
         const successfulRowsCount = batch_items.length;
 
-        // 2. Query duplicate manifest IDs
+        // 2. Query duplicate manifest IDs to prevent log overwrites
         const { data: existingLogs } = await supabaseAdmin
             .from('ecoroute_emissions_logs')
             .select('batch_manifest_row_id')
@@ -67,10 +67,6 @@ export async function POST(req) {
             const isDuplicate = databaseRefIdsSet.has(res.uniqueReferenceKey);
             const isActuallySaved = res.savedToLedger && !isDuplicate;
 
-            if (isActuallySaved) {
-                totalItemsSavedCount++;
-            }
-
             calculationResults.push({
                 reference_id: res.uniqueReferenceKey,
                 type: res.cleanType,
@@ -80,7 +76,9 @@ export async function POST(req) {
                 is_duplicate_override: isDuplicate && res.savedToLedger
             });
 
-            if (res.ledgerPayload) {
+            // FIXED: Only stage entries for batch database insertion if they are NOT duplicates
+            if (res.ledgerPayload && isActuallySaved) {
+                totalItemsSavedCount++;
                 dynamicLogsPayloads.push({
                     user_id: tokenRecord.user_id,
                     ...res.ledgerPayload
@@ -88,6 +86,7 @@ export async function POST(req) {
             }
         }
 
+        // Execute transactional batch write for verified non-duplicate lines
         if (dynamicLogsPayloads.length > 0) {
             const { error: batchInsertError } = await supabaseAdmin
                 .from('ecoroute_emissions_logs')

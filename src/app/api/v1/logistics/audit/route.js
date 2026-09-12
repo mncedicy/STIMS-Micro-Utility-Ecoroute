@@ -1,10 +1,10 @@
-// Updated API route handler with integrated real-time webhook checks
+// src/app/api/v1/logistics/audit/route.js
+
 import { processCategoryEmissions } from '../../../estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
-import { revalidatePath } from 'next/cache';
 import { validateEmissionDate } from './apiValidationCore';
 import { sanitizeCategoryPayload } from './apiPayloadMatrix';
-import { dispatchCorporateWebhook } from '../../config/webhookDispatcher';
+import { runEmissionsPipeline } from '../../../estimates/pipelineService';
 import {
     handlePreflightOptions,
     authenticateAndValidateToken,
@@ -57,115 +57,53 @@ export async function POST(req) {
         const shouldSaveToDatabase = body.save_log === true;
         const incomingReferenceId = body.reference_id ? String(body.reference_id).trim() : null;
 
-        let createdLogRecordId = null;
+        let responseData = null;
         let isDuplicateOverride = false;
 
         if (shouldSaveToDatabase) {
-            if (incomingReferenceId) {
-                const { data: existingMatch } = await supabaseAdmin
-                    .from('ecoroute_emissions_logs')
-                    .select('id')
-                    .eq('user_id', tokenRecord.user_id)
-                    .eq('batch_manifest_row_id', incomingReferenceId)
-                    .maybeSingle();
+            // Fetch necessary dependency rows required by the central processing pipeline engine
+            const [appMetaRes, profRes] = await Promise.all([
+                supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle(),
+                supabaseAdmin.from('profiles').select('*').eq('id', tokenRecord.user_id).maybeSingle()
+            ]);
 
-                if (existingMatch) {
-                    isDuplicateOverride = true;
-                    createdLogRecordId = existingMatch.id;
-                }
-            }
+            // Formulate context objects to match standard pipeline signature structures
+            const userContextMock = { id: tokenRecord.user_id };
+            const tokenQueryMock = { data: tokenRecord };
 
-            if (!isDuplicateOverride) {
-                const { data: dbLogEntry, error: logError } = await supabaseAdmin
-                    .from('ecoroute_emissions_logs')
-                    .insert({
-                        user_id: tokenRecord.user_id,
-                        batch_manifest_row_id: incomingReferenceId,
-                        vehicle_id: cleanType === 'vehicle' ? normalizedPayload.vehicle_id : null,
-                        category_display: body.type.toUpperCase(),
-                        carbon_kg: conversionsPayload.carbon_kg,
-                        carbon_g: conversionsPayload.carbon_g,
-                        carbon_mt: conversionsPayload.carbon_mt,
-                        carbon_lb: conversionsPayload.carbon_lb,
-                        input_distance: ['vehicle', 'shipping'].includes(cleanType) ? parseFloat(normalizedPayload.distance) : null,
-                        input_unit: ['vehicle', 'shipping'].includes(cleanType) ? normalizedPayload.unit : null,
-                        origin_iata: cleanType === 'flight' ? normalizedPayload.origin_iata.substring(0, 3).toUpperCase() : null,
-                        dest_iata: cleanType === 'flight' ? normalizedPayload.dest_iata.substring(0, 3).toUpperCase() : null,
-                        passengers_count: cleanType === 'flight' ? parseInt(normalizedPayload.passengers, 10) : null,
-                        cargo_weight: cleanType === 'shipping' ? parseFloat(normalizedPayload.cargo_weight) : null,
-                        mass_unit: cleanType === 'shipping' ? normalizedPayload.mass_unit : null,
-                        energy_kwh: cleanType === 'electricity' ? parseFloat(normalizedPayload.kwh) : null,
-                        country_code: cleanType === 'electricity' ? normalizedPayload.country_code.toUpperCase() : null,
-                        gas_quantity: cleanType === 'gas' ? parseFloat(normalizedPayload.quantity) : null,
-                        gas_type: cleanType === 'gas' ? normalizedPayload.gas_type : null,
-                        gas_unit: cleanType === 'gas' ? normalizedPayload.gas_unit : null,
-                        emission_date: inputEmissionDate,
-                        log_source_channel: 'ENTERPRISE_API_TUNNEL',
-                        raw_payload: {
-                            ...conversionsPayload,
-                            metadata: { ...metadataLog, userAssignedDate: inputEmissionDate, processedViaSecureTunnel: true }
-                        }
-                    })
-                    .select().single();
+            // Hand execution off cleanly to the central verified pipeline stream
+            responseData = await runEmissionsPipeline({
+                user: userContextMock,
+                cleanType,
+                body: normalizedPayload,
+                conversionsPayload,
+                metadataLog,
+                appMetaRes,
+                tokenQuery: tokenQueryMock,
+                profRes,
+                currentUsageCount: tokenRecord.current_monthly_usage || 0,
+                incomingReferenceId,
+                logSourceChannel: 'ENTERPRISE_API_TUNNEL'
+            });
 
-                if (logError) throw logError;
-                createdLogRecordId = dbLogEntry.id;
-            }
+            isDuplicateOverride = responseData?.isDuplicateOverride || false;
         }
 
-        const currentUsageCount = tokenRecord.current_monthly_usage || 0;
         const capacityLimitBounds = tokenRecord.usage_limit_cap || 100;
-        const nextUsageCountValue = currentUsageCount + 1;
-
-        await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .update({ current_monthly_usage: nextUsageCountValue, updated_at: new Date().toISOString() })
-            .eq('user_id', tokenRecord.user_id);
-
-        // --- ADDED WEBHOOK DISPATCH TRIGGERS (When saved to database successfully) ---
-        if (shouldSaveToDatabase && !isDuplicateOverride) {
-            const updatedUsageRatio = nextUsageCountValue / capacityLimitBounds;
-
-            // 1. Quota Exhaustion Warning (95% threshold)
-            if (updatedUsageRatio >= 0.95) {
-                await dispatchCorporateWebhook(tokenRecord.user_id, 'quota_exhaustion_warning', {
-                    threshold_reached: '95%',
-                    message: "Sent when your monthly request quota is running low (95% consumed), preventing sudden data integration blind spots.",
-                    current_usage: nextUsageCountValue,
-                    quota_limit: capacityLimitBounds
-                });
-            }
-
-            // 2. Carbon Threshold Alert (85% sustainability budget cap check)
-            const currentTaxLiabilityZar = parseFloat(tokenRecord.total_accrued_tax_liability_zar || 0) + (conversionsPayload.carbon_kg * 0.15); // example conversion factor
-            const budgetCapZar = 20000.00;
-            if (currentTaxLiabilityZar >= (budgetCapZar * 0.85)) {
-                await dispatchCorporateWebhook(tokenRecord.user_id, 'carbon_threshold_alert', {
-                    threshold_reached: '85%',
-                    message: "Triggered immediately when aggregate corporate monthly carbon emissions cross 85% of your configured sustainability budget cap.",
-                    accrued_tax_zar: currentTaxLiabilityZar,
-                    threshold_limit_zar: budgetCapZar
-                });
-            }
-        }
-
-        try {
-            revalidatePath('/');
-            revalidatePath('/dashboard');
-        } catch (cacheErr) {
-            console.warn('[Cache Bypass]:', cacheErr.message);
-        }
+        const assignedUsageTotal = isDuplicateOverride
+            ? (tokenRecord.current_monthly_usage || 0)
+            : (tokenRecord.current_monthly_usage || 0) + 1;
 
         return sendApiResponse(req, {
             success: true,
             status: shouldSaveToDatabase ? (isDuplicateOverride ? 'DUPLICATE_REFERENCE_SKIPPED' : 'TRANSACTION_AUDIT_VERIFIED') : 'CALCULATOR_ESTIMATE_ONLY',
             timestamp: new Date().toISOString(),
             organization: tokenRecord.organization_name,
-            quota_requests_remaining: Math.max(0, capacityLimitBounds - nextUsageCountValue),
+            quota_requests_remaining: Math.max(0, capacityLimitBounds - assignedUsageTotal),
             is_duplicate_override: isDuplicateOverride,
             metrics: conversionsPayload,
             telemetry: { ...metadataLog, emissionDateApplied: inputEmissionDate, loggedToDatabase: shouldSaveToDatabase && !isDuplicateOverride },
-            record: shouldSaveToDatabase ? { id: createdLogRecordId } : null
+            record: shouldSaveToDatabase ? { id: responseData?.id || null } : null
         }, corsHeaders, 200);
 
     } catch (err) {

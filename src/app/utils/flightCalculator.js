@@ -1,3 +1,6 @@
+// src\app\utils\flightCalculator.js
+
+
 const FLIGHT_TIERS = {
     DOMESTIC: 0.245,    // Flights < 400 km
     SHORT_HAUL: 0.151,  // Flights between 400 km and 3700 km
