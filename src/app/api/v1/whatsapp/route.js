@@ -21,7 +21,6 @@ export async function GET(req) {
         const token = searchParams.get('hub.verify_token');
         const challenge = searchParams.get('hub.challenge');
 
-        // Check against env var, fallback token, OR hardcoded exact match
         const envToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim();
         const fallbackToken = 'ecoroute_secret_handshake';
 
@@ -87,13 +86,19 @@ export async function POST(req) {
 
         const incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
 
+        // Phone variations matching (e.g. Meta sends 27784884519; database might store +27784884519 or 0784884519)
+        const rawPhone = cleanPhoneNumber;
+        const plusPhone = `+${rawPhone}`;
+        const localPhone = rawPhone.startsWith('27') ? `0${rawPhone.slice(2)}` : rawPhone;
+
         const { data: userProfile, error: profileError } = await supabaseAdmin
             .from('profiles')
             .select('id, first_name, company')
-            .eq('phone_number', cleanPhoneNumber)
+            .or(`phone_number.eq.${rawPhone},phone_number.eq.${plusPhone},phone_number.eq.${localPhone}`)
             .maybeSingle();
 
         if (profileError || !userProfile) {
+            console.warn(`⚠️ User profile not found for phone number: ${cleanPhoneNumber}`);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: Your mobile number is not registered. Please link this number in your settings.");
             return NextResponse.json({ success: true }, { status: 200 });
         }
