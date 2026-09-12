@@ -6,9 +6,6 @@ import { supabaseAdmin } from '@/app/lib/supabaseAdminServer';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-/**
- * 1. META WEBHOOK HANDSHAKE VERIFICATION (GET)
- */
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -37,9 +34,6 @@ export async function GET(req) {
     }
 }
 
-/**
- * 2. LIVE INBOUND WHATSAPP MESSAGE HANDLER (POST)
- */
 export async function POST(req) {
     try {
         const { handleIncomingCommand } = await import('./commandParser');
@@ -64,7 +58,7 @@ export async function POST(req) {
         const messageNode = valueBlock.messages[0];
         const metadataNode = valueBlock.metadata || {};
 
-        const cleanPhoneNumber = String(messageNode.from || '').trim(); // e.g. "27784884519"
+        const cleanPhoneNumber = String(messageNode.from || '').trim();
         const businessPhoneNumberId = metadataNode.phone_number_id || "1307900412406936";
 
         if (messageNode.type !== 'text') {
@@ -74,36 +68,25 @@ export async function POST(req) {
 
         const incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
 
-        // Variations setup
-        const rawPhone = cleanPhoneNumber;
-        const plusPhone = `+${rawPhone}`;
-        const localPhone = rawPhone.startsWith('27') ? `0${rawPhone.slice(2)}` : rawPhone;
+        // Extract last 9 digits (e.g. "784884519") to ignore country codes and leading zeroes
+        const lastDigits = cleanPhoneNumber.slice(-9);
 
-        const targetNumbers = [rawPhone, plusPhone, localPhone];
-        console.log('🔍 [Database Query Target Numbers]:', targetNumbers);
+        console.log(`🔍 [Lookup Request] Mobile: ${cleanPhoneNumber} | Searching Pattern: %${lastDigits}%`);
 
-        // 1. Primary Array Match Query
-        let { data: userProfiles, error: profileError } = await supabaseAdmin
+        // Query using ILIKE substring matching to bypass spacing or prefix mismatch
+        const { data: userProfiles, error: profileError } = await supabaseAdmin
             .from('profiles')
             .select('id, first_name, company, phone_number')
-            .in('phone_number', targetNumbers);
+            .ilike('phone_number', `%${lastDigits}%`);
 
-        // 2. Fallback Substring / ILIKE Match Query (if exact match yields empty array)
-        if (!userProfiles || userProfiles.length === 0) {
-            console.warn('⚠️ Standard .in() check failed. Attempting ILIKE fallback search...');
-            const { data: fallbackProfiles, error: fallbackError } = await supabaseAdmin
-                .from('profiles')
-                .select('id, first_name, company, phone_number')
-                .ilike('phone_number', `%${localPhone.slice(-9)}%`);
-
-            userProfiles = fallbackProfiles;
-            profileError = fallbackError;
+        if (profileError) {
+            console.error('🚨 Supabase DB Query Error:', profileError.message);
         }
 
         const userProfile = userProfiles?.[0];
 
-        if (profileError || !userProfile) {
-            console.error(`❌ Profile Lookup Failed. DB Error:`, profileError);
+        if (!userProfile) {
+            console.warn(`⚠️ Match failed for phone number ending in: ${lastDigits}`);
             await sendMetaWhatsappMessage(
                 businessPhoneNumberId,
                 cleanPhoneNumber,
@@ -112,7 +95,7 @@ export async function POST(req) {
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
-        console.log(`✅ [Profile Matched]: ${userProfile.first_name || 'User'} (${userProfile.id})`);
+        console.log(`✅ [Profile Matched]: User ID = ${userProfile.id}, Name = ${userProfile.first_name}`);
 
         // Fetch User Token Quota
         const { data: tokenRecord } = await supabaseAdmin
@@ -143,7 +126,7 @@ export async function POST(req) {
         return NextResponse.json({ success: true }, { status: 200 });
 
     } catch (err) {
-        console.error('🚨 Webhook Error:', err.message);
+        console.error('🚨 Webhook Pipeline Error:', err.message);
         return NextResponse.json({ error: 'Internal Server Error: ' + err.message }, { status: 500 });
     }
 }
