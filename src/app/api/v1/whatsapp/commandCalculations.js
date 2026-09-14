@@ -5,11 +5,22 @@ import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { runEmissionsPipeline } from '@/app/api/estimates/pipelineService';
 import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
+import { processConversationState } from './commandState';
 
 export async function executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin }) {
-    const [appMetaRes] = await Promise.all([supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle()]);
+    const [appMetaRes, vehiclesQuery] = await Promise.all([
+        supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle(),
+        supabaseAdmin.from('ecoroute_vehicles').select('id, registration, registration_number, make, model').eq('user_id', userProfile.id).eq('is_active', true)
+    ]);
+
+    const activeVehicles = vehiclesQuery.data || [];
     const mockTokenQuery = { data: tokenRecord };
     const mockProfRes = { data: userProfile };
+
+    const stateHandled = await processConversationState({
+        lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes
+    });
+    if (stateHandled) return true;
 
     if (lowerMessage.startsWith('vehicle')) {
         const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-z0-9-]+)$/i;
@@ -77,4 +88,6 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'gas', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
         return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Gas Combustion: ${gasType.toUpperCase()}`, `${quantity} ${gasUnit.toUpperCase()}`, payload, usageCap, currentUsage));
     }
+
+    return false;
 }

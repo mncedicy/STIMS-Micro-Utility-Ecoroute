@@ -78,7 +78,7 @@ export async function displayWhatsappMainMenu({
     if (cleanInput === '6' && isFreeTier) {
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Connecting to checkout gateways... Please check your tray link to complete verification upgrades.`);
         try {
-            const hostUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stims.co.za';
+            const hostUrl = 'https://ecoroute.stims.co.za';
             const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
