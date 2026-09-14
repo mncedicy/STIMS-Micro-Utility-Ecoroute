@@ -1,30 +1,108 @@
-// File Location: src/app/api/v1/whatsapp/commandMenu.js
+// src/app/api/v1/whatsapp/commandMenu.js
 
 import { sendMetaWhatsappMessage } from './metaClient';
 
-/**
- * Greets an authenticated operator nicely by name and renders the custom structural system menu options.
- *
- * @param {string} businessPhoneNumberId - Meta target node configuration ID.
- * @param {string} cleanPhoneNumber - Destination customer mobile address sequence.
- * @param {Object} userProfile - Database profile entity block container.
- */
-export async function displayWhatsappMainMenu(businessPhoneNumberId, cleanPhoneNumber, userProfile = {}) {
-    const dynamicMainMenuPrompt =
-        `✨ *Hello, ${userProfile.first_name || 'Partner'}!* ✨\n` +
-        `Welcome to your EcoRoute WhatsApp Control Hub.\n\n` +
-        `*MAIN SYSTEM MENU*:\n` +
-        `1. Audit Calculator\n` +
-        `2. Route Checker\n` +
-        `3. Tax Report\n` +
-        `4. referralS\n` +
-        `5. FLEET ASSETS\n\n` +
-        `💡 *Quick Audit Commands Examples*:\n` +
-        `• _vehicle 45km [id]_\n` +
-        `• _flight 2 pax jnb cpt business_\n` +
-        `• _power 350 za utility_grid_\n` +
-        `• _shipping 10 tonnes 400 km rail_\n` +
-        `• _gas 80 lpg kg_`;
+export async function displayWhatsappMainMenu({
+    incomingMessage,
+    userProfile,
+    tokenRecord,
+    availableBalanceCents = 0,
+    customVehicles = [],
+    businessPhoneNumberId,
+    cleanPhoneNumber
+}) {
+    const cleanInput = String(incomingMessage || '').trim().toLowerCase();
+    const currentSubStatus = String(tokenRecord?.status || 'free').toLowerCase();
+    const isFreeTier = !['active', 'premium', 'pro'].includes(currentSubStatus);
+    const firstName = userProfile?.first_name || 'Partner';
+    const companyName = userProfile?.company ? ` (${userProfile.company})` : '';
+    const availableZar = availableBalanceCents / 100;
 
-    await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, dynamicMainMenuPrompt);
+    if (cleanInput === '1') {
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber,
+            `📊 *1. AUDIT CALCULATOR SUB-MENU* 📊\n\n` +
+            `Reply using one of these structural command paths to log entries:\n\n` +
+            `🚚 *1. Vehicle:* _vehicle [dist]km [vehicle_id]_\n` +
+            `📦 *2. Shipping:* _shipping [weight] [unit] [dist]km [mode]_\n` +
+            `✈️ *3. Flight:* _flight [pax] [origin_iata] [dest_iata] [class]_\n` +
+            `⚡ *4. Electricity:* _power [kwh] [country] [source]_\n` +
+            `🔥 *5. Gas:* _gas [qty] [type] [unit]_`
+        );
+        return;
+    }
+
+    if (cleanInput === '2') {
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber,
+            `🗺️ *2. ROUTE CHECKER RUNS* 🗺️\n\n` +
+            `To track a terrestrial matrix array trace path, use the dashboard tracker panel or pass parameters via API integrations.\n\n` +
+            `💡 *Command Format Examples*:\n` +
+            `• _vehicle 45km [vehicle_id]_\n` +
+            `• _vehicle 120miles [vehicle_id]_`
+        );
+        return;
+    }
+
+    if (cleanInput === '3') {
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber,
+            `🏛️ *3. STATUTORY TAX LEGER REPORT* 🏛️\n\n` +
+            `To output compliance auditing spreadsheets under SARS regime parameters, calculate tax window frames inside your console dashboard panel.\n\n` +
+            `💡 *Usage Note*: Detailed multi-period ledgers are compiled securely via standard web dash interfaces.`
+        );
+        return;
+    }
+
+    if (cleanInput === '4') {
+        let text = `💰 *4. REFERRALS EARNING BASES* 💰\n\n• Unpaid Wallet Balance: *R${availableZar.toFixed(2)} ZAR*\n\n`;
+        text += availableZar >= 100
+            ? `👉 *Reply with "withdraw"* to trigger a manual disbursement execution run via Paystack gateways.`
+            : `ℹ️ _Note: A minimum of R100.00 is required to trigger cashout payment modules._`;
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, text);
+        return;
+    }
+
+    if (cleanInput === '5') {
+        let text = `🚛 *5. REGISTERED FLEET ASSET NODES* 🚛\n\n`;
+        if (customVehicles.length > 0) {
+            customVehicles.forEach((veh) => {
+                const reg = (veh.registration_number || veh.registration || 'FLEET').toUpperCase();
+                const identity = `${veh.make || ''} ${veh.model || ''}`.trim().toUpperCase();
+                text += `• *${reg}* - ${identity || 'ASSET NODE'}\n`;
+            });
+        } else {
+            text += `ℹ️ No active fleet assets linked to your corporate sustainability profiles.`;
+        }
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, text);
+        return;
+    }
+
+    if (cleanInput === '6' && isFreeTier) {
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Connecting to checkout gateways... Please check your tray link to complete verification upgrades.`);
+        try {
+            const hostUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stims.co.za';
+            const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: userProfile.id, userEmail: userProfile.email || tokenRecord.user_email || '', callbackUrl: `${hostUrl}/dashboard` })
+            });
+            const result = await apiRes.json();
+            if (result.success && result.url) {
+                await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⭐ *UPGRADE TO PRO PLAN* ⭐\n\nClick the link below to initialize your secure Paystack subscription run:\n\n🔗 ${result.url}`);
+            } else {
+                throw new Error(result.error || "Gateway timeout.");
+            }
+        } catch (err) {
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Checkout Error: ${err.message}`);
+        }
+        return;
+    }
+
+    if (cleanInput === 'withdraw' && availableZar >= 100) {
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⚙️ Processing referral request... To finalize banking details, use the withdrawal dashboard panel.`);
+        return;
+    }
+
+    let menu = `✨ *Hello, ${firstName}!* ${companyName} ✨\nWelcome to your EcoRoute WhatsApp Control Hub.\n\n*MAIN SYSTEM MENU*:\n1. Audit Calculator\n2. Route Checker\n3. Tax Report\n4. Referrals\n5. Fleet Assets\n`;
+    if (isFreeTier) menu += `6. Subscribe (R280)\n`;
+    menu += `\n🔢 _Reply with a menu number, or type a command string to audit parameters directly._`;
+    await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, menu);
 }
