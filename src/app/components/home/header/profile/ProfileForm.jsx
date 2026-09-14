@@ -1,58 +1,128 @@
+// src/app/components/home/header/profile/ProfileForm.jsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../../lib/supabaseClient';
-import SearchableDropdownField from '../../../shared/SearchableDropdownField';
+import ProfileFormView from './ProfileFormView';
 
 export default function ProfileForm({ user, profile, onClose, onChangeToPassword }) {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState({ text: '', success: false });
 
-    const [firstName, setFirstName] = useState('');
+    const [name, setName] = useState('');
     const [surname, setSurname] = useState('');
     const [company, setCompany] = useState('');
     const [countryCode, setCountryCode] = useState('');
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
 
     const [countryList, setCountryList] = useState([]);
     const [selectedCountry, setSelectedCountry] = useState(null);
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+    // Tracks if initial profile mapping has run to prevent state overwrite loops
+    const hasInitializedProfile = useRef(false);
+
+    // Dynamic UI formatter that adds spaces on-the-fly as the user types
+    const formatInputSpacing = (rawValue) => {
+        const digits = rawValue.replace(/\D/g, '');
+
+        if (digits.length <= 9) {
+            if (digits.length <= 2) return digits;
+            if (digits.length <= 5) return `${digits.slice(0, 2)} ${digits.slice(2)}`;
+            return `${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 9)}`;
+        }
+
+        if (digits.length <= 3) return digits;
+        if (digits.length <= 7) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+        return `${digits.slice(0, 3)} ${digits.slice(3, 7)} ${digits.slice(7, 12)}`;
+    };
+
+    // Helper to map and parse phone formatting from raw database records
+    const loadProfileData = (profileRecord, list) => {
+        setName(profileRecord.first_name || '');
+        setSurname(profileRecord.surname || '');
+        setCompany(profileRecord.company || '');
+        setEmail(profileRecord.email || user?.email || '');
+
+        const targetCode = profileRecord.country_code || '';
+        setCountryCode(targetCode);
+
+        let matchedCountry = null;
+        if (targetCode) {
+            matchedCountry = list.find((c) => c.code.toUpperCase() === targetCode.toUpperCase());
+            setSelectedCountry(matchedCountry || null);
+        } else {
+            setSelectedCountry(null);
+        }
+
+        let rawPhone = profileRecord.phone_number || '';
+        if (rawPhone && matchedCountry && matchedCountry.dial_code) {
+            const prefix = matchedCountry.dial_code;
+            if (rawPhone.startsWith(prefix)) {
+                rawPhone = rawPhone.substring(prefix.length);
+            }
+        }
+
+        setPhone(formatInputSpacing(rawPhone));
+    };
+
+    // 1. Fetch data dictionary ONCE on mount
     useEffect(() => {
         async function fetchCountries() {
             const { data, error } = await supabase
                 .from('ecoroute_static_countries')
-                .select('id, code, name, continent')
+                .select('id, code, name, continent, dial_code')
                 .order('name', { ascending: true });
 
             if (!error && data) {
                 setCountryList(data);
-                if (countryCode) {
-                    const match = data.find((c) => c.code.toUpperCase() === countryCode.toUpperCase());
-                    if (match) setSelectedCountry(match);
-                }
             }
         }
         fetchCountries();
-    }, [countryCode]);
+    }, []);
 
+    // 2. Map incoming profile record safely exactly ONCE when database dictionary is ready
     useEffect(() => {
-        if (profile) {
-            setFirstName(profile.first_name || '');
-            setSurname(profile.surname || '');
-            setCompany(profile.company || '');
-            setCountryCode(profile.country_code || '');
-
-            if (countryList.length > 0 && profile.country_code) {
-                const match = countryList.find((c) => c.code.toUpperCase() === profile.country_code.toUpperCase());
-                if (match) setSelectedCountry(match);
-            }
+        if (profile && countryList.length > 0 && !hasInitializedProfile.current) {
+            loadProfileData(profile, countryList);
+            hasInitializedProfile.current = true;
         }
-    }, [profile, countryList]);
+    }, [profile, countryList, user]);
 
-    const handleSelectCountry = (item) => {
-        setSelectedCountry(item);
-        setCountryCode(item.code);
-        setIsDropdownOpen(false);
+    // Resets form states back to initial database record checkpoints cleanly
+    const handleResetFields = () => {
+        if (profile && countryList.length > 0) {
+            loadProfileData(profile, countryList);
+            setMessage({ text: 'Fields reverted to saved profile values.', success: true });
+            setTimeout(() => setMessage({ text: '', success: false }), 2000);
+        }
+    };
+
+    // Clean data string engine to verify inputs right before writing to Supabase
+    const cleanAndFormatPhone = (rawPhone, countryObj) => {
+        if (!rawPhone.trim()) return '';
+
+        let digits = rawPhone.replace(/\D/g, '');
+
+        if (!countryObj || !countryObj.dial_code) {
+            throw new Error('Please select a country to format your number correctly.');
+        }
+
+        const prefix = countryObj.dial_code;
+
+        if (digits.startsWith(prefix)) {
+            digits = digits.substring(prefix.length);
+        }
+
+        if (digits.startsWith('0')) {
+            digits = digits.substring(1);
+        }
+
+        if (digits.length < 6 || digits.length > 11) {
+            throw new Error(`The phone number looks too short or long for ${countryObj.name}.`);
+        }
+
+        return prefix + digits;
     };
 
     const handleUpdateProfile = async (e) => {
@@ -61,13 +131,30 @@ export default function ProfileForm({ user, profile, onClose, onChangeToPassword
         setMessage({ text: '', success: false });
 
         try {
+            const formattedPhone = cleanAndFormatPhone(phone, selectedCountry);
+
+            if (formattedPhone) {
+                const { data: isDuplicate, error: checkError } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('phone_number', formattedPhone)
+                    .neq('id', user?.id)
+                    .maybeSingle();
+
+                if (checkError) throw checkError;
+                if (isDuplicate) {
+                    throw new Error('This phone number is already registered to another user profile.');
+                }
+            }
+
             const { error } = await supabase
                 .from('profiles')
                 .update({
-                    first_name: firstName.trim(),
+                    first_name: name.trim(),
                     surname: surname.trim(),
                     company: company.trim(),
                     country_code: countryCode.trim().toUpperCase(),
+                    phone_number: formattedPhone || null,
                 })
                 .eq('id', user?.id);
 
@@ -87,110 +174,27 @@ export default function ProfileForm({ user, profile, onClose, onChangeToPassword
     };
 
     return (
-        <form onSubmit={handleUpdateProfile} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-                <div>
-                    <label className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">
-                        First Name
-                    </label>
-                    <input
-                        type="text"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        placeholder="John"
-                        className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
-                    />
-                </div>
-                <div>
-                    <label className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">
-                        Surname
-                    </label>
-                    <input
-                        type="text"
-                        value={surname}
-                        onChange={(e) => setSurname(e.target.value)}
-                        placeholder="Doe"
-                        className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
-                    />
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 items-end">
-                <div>
-                    <label className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">
-                        Company
-                    </label>
-                    <input
-                        type="text"
-                        value={company}
-                        onChange={(e) => setCompany(e.target.value)}
-                        placeholder="Acme Corp"
-                        className="w-full h-[38px] bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
-                    />
-                </div>
-
-                <div>
-                    <SearchableDropdownField
-                        label={
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                Country
-                            </span>
-                        }
-                        placeholder="Select Region"
-                        searchPlaceholder="Type to filter..."
-                        valueDisplay={
-                            selectedCountry ? (
-                                <span className="text-xs text-white">
-                                    {selectedCountry.name} ({selectedCountry.code})
-                                </span>
-                            ) : (
-                                <span className="text-xs text-slate-500">Select Region</span>
-                            )
-                        }
-                        items={countryList}
-                        disabled={loading}
-                        isOpen={isDropdownOpen}
-                        onToggle={() => setIsDropdownOpen(!isDropdownOpen)}
-                        onSelect={handleSelectCountry}
-                        renderItem={(item) => <span className="text-xs">{item.name} ({item.code})</span>}
-                    />
-                </div>
-            </div>
-
-            {message.text && (
-                <p className={`text-[10px] ${message.success ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {message.text}
-                </p>
-            )}
-
-            <div className="flex flex-col space-y-2 pt-2">
-                <div className="flex justify-start">
-                    <button
-                        type="button"
-                        onClick={onChangeToPassword}
-                        className="text-blue-500 hover:text-blue-400 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
-                    >
-                        🔑 Change Password?
-                    </button>
-                </div>
-
-                <div className="flex justify-end space-x-2">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-3 py-2 rounded-lg text-[10px] hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-bold uppercase transition-all duration-300 stims-hover-glow cursor-pointer shadow-sm"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold uppercase rounded-lg disabled:opacity-50 transition-all duration-300 stims-hover-glow cursor-pointer shadow-sm"
-                    >
-                        {loading ? 'Saving...' : 'Save Changes'}
-                    </button>
-                </div>
-            </div>
-        </form>
+        <ProfileFormView
+            onSubmit={handleUpdateProfile}
+            onReset={handleResetFields}
+            loading={loading}
+            message={message}
+            name={name}
+            setName={setName}
+            surname={surname}
+            setSurname={setSurname}
+            company={company}
+            setCompany={setCompany}
+            email={email}
+            phone={phone}
+            setPhone={setPhone}
+            formatInputSpacing={formatInputSpacing}
+            countryList={countryList}
+            selectedCountry={selectedCountry}
+            setSelectedCountry={setSelectedCountry}
+            setCountryCode={setCountryCode}
+            onClose={onClose}
+            onChangeToPassword={onChangeToPassword}
+        />
     );
 }

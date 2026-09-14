@@ -5,7 +5,11 @@ import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { runEmissionsPipeline } from '@/app/api/estimates/pipelineService';
 import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
+import { displayWhatsappMainMenu } from './commandMenu';
 
+/**
+ * Evaluates text strings via cryptographic boundaries and hands variables off to tracking logs.
+ */
 export async function handleIncomingCommand({
     incomingMessage,
     userProfile,
@@ -22,18 +26,20 @@ export async function handleIncomingCommand({
     const mockTokenQuery = { data: tokenRecord };
     const mockProfRes = { data: userProfile };
 
-    // 1. VEHICLE: vehicle [distance]km [vehicle_id]
-    if (incomingMessage.startsWith('vehicle')) {
-        const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-f0-9-]+)$/i;
-        const match = incomingMessage.match(pattern);
+    const lowerMessage = String(incomingMessage || '').trim().toLowerCase();
+
+    // 1. VEHICLE ROUTING CHANNEL
+    if (lowerMessage.startsWith('vehicle')) {
+        const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-z0-9-]+)$/i;
+        const match = lowerMessage.match(pattern);
 
         if (!match) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: vehicle [distance][unit] [vehicle_id]\nExample: vehicle 45km abc-123");
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: vehicle [distance][unit] [vehicle_id]\nExample: vehicle 45km rrryyyii");
             return;
         }
 
         const [, distance, unit, vehicleId] = match;
-        const computationForm = { type: 'vehicle', distance: parseFloat(distance), unit: unit.toLowerCase(), vehicle_id: vehicleId, save_log: true };
+        const computationForm = { type: 'vehicle', distance: distance.toString(), unit: unit.toLowerCase(), vehicle_id: vehicleId.trim(), save_log: true };
 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('vehicle', computationForm, tokenRecord?.api_token || '');
         const conversionsPayload = formatEmissionPayload(calculatedKg);
@@ -43,22 +49,22 @@ export async function handleIncomingCommand({
             appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL'
         });
 
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || vehicleId}`, `${distance} ${unit.toUpperCase()}`, conversionsPayload, usageCap, currentUsage));
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || vehicleId.toUpperCase()}`, `${distance} ${unit.toUpperCase()}`, conversionsPayload, usageCap, currentUsage));
         return;
     }
 
-    // 2. FLIGHT: flight [passengers] [origin_iata] [dest_iata] [class]
-    if (incomingMessage.startsWith('flight')) {
+    // 2. FLIGHT TELESCOPIC CHANNEL
+    if (lowerMessage.startsWith('flight')) {
         const pattern = /^flight\s+(\d+)\s+([a-z]{3})\s+([a-z]{3})\s*(economy|business|first)?$/i;
-        const match = incomingMessage.match(pattern);
+        const match = lowerMessage.match(pattern);
 
         if (!match) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: flight [pax] [origin] [dest] [class]\nExample: flight 1 jnb cpt business");
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: flight [pax] [origin] [dest] [class]\nExample: flight 12 jnb cpt business");
             return;
         }
 
         const [, passengers, origin, dest, flightClass] = match;
-        const computationForm = { type: 'flight', passengers: parseInt(passengers, 10), origin_iata: origin.toUpperCase(), dest_iata: dest.toUpperCase(), flight_class: flightClass || 'economy', save_log: true };
+        const computationForm = { type: 'flight', passengers: passengers.toString(), origin_iata: origin.trim().toUpperCase(), dest_iata: dest.trim().toUpperCase(), flight_class: flightClass || 'economy', save_log: true };
 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('flight', computationForm, tokenRecord?.api_token || '');
         const conversionsPayload = formatEmissionPayload(calculatedKg);
@@ -72,10 +78,10 @@ export async function handleIncomingCommand({
         return;
     }
 
-    // 3. ELECTRICITY: power [kwh] [country_code] [source]
-    if (incomingMessage.startsWith('power')) {
+    // 3. ELECTRICITY SCOPE BALANCER
+    if (lowerMessage.startsWith('power')) {
         const pattern = /^power\s+(\d+(?:\.\d+)?)\s*([a-z]{2})\s*(utility_grid|diesel_generator|solar_pv)?$/i;
-        const match = incomingMessage.match(pattern);
+        const match = lowerMessage.match(pattern);
 
         if (!match) {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: power [kwh] [country] [source]\nExample: power 250 za utility_grid");
@@ -83,7 +89,8 @@ export async function handleIncomingCommand({
         }
 
         const [, kwh, country, powerSource] = match;
-        const computationForm = { type: 'electricity', kwh: parseFloat(kwh), country_code: country.toUpperCase(), power_source: powerSource || 'utility_grid', save_log: true };
+        const resolvedSource = (powerSource || 'utility_grid').trim().toLowerCase();
+        const computationForm = { type: 'electricity', kwh: kwh.toString(), country_code: country.trim().toUpperCase(), power_source: resolvedSource, save_log: true };
 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('electricity', computationForm, tokenRecord?.api_token || '');
         const conversionsPayload = formatEmissionPayload(calculatedKg);
@@ -93,14 +100,14 @@ export async function handleIncomingCommand({
             appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL'
         });
 
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Electricity Grid (${country.toUpperCase()})`, `${kwh} kWh (${powerSource || 'utility_grid'})`, conversionsPayload, usageCap, currentUsage));
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Electricity Grid (${country.toUpperCase()})`, `${kwh} kWh (${resolvedSource})`, conversionsPayload, usageCap, currentUsage));
         return;
     }
 
-    // 4. SHIPPING: shipping [weight] [mass_unit] [dist][unit] [mode]
-    if (incomingMessage.startsWith('shipping')) {
+    // 4. FREIGHT LOGISTICS MATRIX CHANNEL
+    if (lowerMessage.startsWith('shipping')) {
         const pattern = /^shipping\s+(\d+(?:\.\d+)?)\s*(kg|lbs|tonnes)\s+(\d+(?:\.\d+)?)\s*(km|miles)\s*(standard|road_heavy|road_light|rail|ocean)?$/i;
-        const match = incomingMessage.match(pattern);
+        const match = lowerMessage.match(pattern);
 
         if (!match) {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: shipping [weight] [mass_unit] [dist][unit] [mode]\nExample: shipping 5 tonnes 850 km road_heavy");
@@ -108,7 +115,8 @@ export async function handleIncomingCommand({
         }
 
         const [, weight, massUnit, distance, unit, shippingMode] = match;
-        const computationForm = { type: 'shipping', cargo_weight: parseFloat(weight), mass_unit: massUnit.toLowerCase(), distance: parseFloat(distance), unit: unit.toLowerCase(), shipping_mode: shippingMode || 'standard', save_log: true };
+        const resolvedMode = (shippingMode || 'standard').trim().toLowerCase();
+        const computationForm = { type: 'shipping', cargo_weight: weight.toString(), mass_unit: massUnit.toLowerCase(), distance: distance.toString(), unit: unit.toLowerCase(), shipping_mode: resolvedMode, save_log: true };
 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('shipping', computationForm, tokenRecord?.api_token || '');
         const conversionsPayload = formatEmissionPayload(calculatedKg);
@@ -118,14 +126,14 @@ export async function handleIncomingCommand({
             appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL'
         });
 
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Freight Logistics: ${shippingMode || 'standard'}`, `${weight}${massUnit} across ${distance}${unit}`, conversionsPayload, usageCap, currentUsage));
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Freight Logistics: ${resolvedMode.toUpperCase()}`, `${weight}${massUnit} across ${distance}${unit}`, conversionsPayload, usageCap, currentUsage));
         return;
     }
 
-    // 5. GAS: gas [quantity] [type] [unit]
-    if (incomingMessage.startsWith('gas')) {
+    // 5. STATIONARY GAS COMBUSTION 
+    if (lowerMessage.startsWith('gas')) {
         const pattern = /^gas\s+(\d+(?:\.\d+)?)\s*(natural_gas|lpg)\s+(m3|kwh|liter|kg)$/i;
-        const match = incomingMessage.match(pattern);
+        const match = lowerMessage.match(pattern);
 
         if (!match) {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: gas [quantity] [type] [unit]\nExample: gas 120 natural_gas m3");
@@ -133,7 +141,7 @@ export async function handleIncomingCommand({
         }
 
         const [, quantity, gasType, gasUnit] = match;
-        const computationForm = { type: 'gas', quantity: parseFloat(quantity), gas_type: gasType.toUpperCase(), gas_unit: gasUnit.toLowerCase(), save_log: true };
+        const computationForm = { type: 'gas', quantity: quantity.toString(), gas_type: gasType.toUpperCase(), gas_unit: gasUnit.toLowerCase(), save_log: true };
 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('gas', computationForm, tokenRecord?.api_token || '');
         const conversionsPayload = formatEmissionPayload(calculatedKg);
@@ -147,15 +155,6 @@ export async function handleIncomingCommand({
         return;
     }
 
-    // Global Help Menu Interactive Prompt
-    const defaultHelpString =
-        `👋 Hello ${userProfile.first_name || 'there'}!\nWelcome to EcoRoute Mobile Audit Sync.\n\n` +
-        `To calculate and save compliance ledger audits instantly, reply using commands:\n\n` +
-        `🚚 *Vehicle:* vehicle [dist]km [vehicle_id]\n` +
-        `✈️ *Flight:* flight [pax] [origin_iata] [dest_iata]\n` +
-        `⚡ *Electricity:* power [kwh] [country_code]\n` +
-        `📦 *Freight:* shipping [weight] [unit] [dist]km\n` +
-        `🔥 *Gas:* gas [qty] [natural_gas|lpg] [unit]`;
-
-    await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, defaultHelpString);
+    // Default Fallback: Diverts raw text messages down to layout view templates
+    await displayWhatsappMainMenu(businessPhoneNumberId, cleanPhoneNumber, userProfile);
 }

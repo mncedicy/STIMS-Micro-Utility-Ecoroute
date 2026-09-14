@@ -1,3 +1,5 @@
+// src\app\components\home\header\profile\EditProfileModal.jsx
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -22,7 +24,7 @@ export default function EditProfileModal({ isOpen, onClose, user, profile }) {
 
     return createPortal(
         <div className="fixed inset-0 z-[99999] bg-slate-950/80 backdrop-blur-sm flex items-start justify-center p-4 pt-10 overflow-y-auto">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 transition-all duration-300 stims-hover-glow shadow-sm relative top-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-6 space-y-4 transition-all duration-300 stims-hover-glow shadow-sm relative top-4">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                     <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
                         {viewMode === 'profile' ? 'UPDATE DETAILS' : 'CHANGE PASSWORD'}
