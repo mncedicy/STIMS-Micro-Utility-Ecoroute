@@ -1,6 +1,5 @@
 // src/app/api/v1/whatsapp/commandMenu.js
 
-import { headers } from 'next/headers';
 import { sendMetaWhatsappMessage } from './metaClient';
 
 export async function displayWhatsappMainMenu({
@@ -10,7 +9,8 @@ export async function displayWhatsappMainMenu({
     availableBalanceCents = 0,
     customVehicles = [],
     businessPhoneNumberId,
-    cleanPhoneNumber
+    cleanPhoneNumber,
+    incomingServerUrl
 }) {
     const cleanInput = String(incomingMessage || '').trim().toLowerCase();
     const currentSubStatus = String(tokenRecord?.status || 'free').toLowerCase();
@@ -80,18 +80,15 @@ export async function displayWhatsappMainMenu({
     if (cleanInput === '6' && isFreeTier) {
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Connecting to checkout gateways... Please check your tray link to complete verification upgrades.`);
         try {
-            // FIXED: Dynamically read the incoming request headers securely from the server thread context
-            const headersList = await headers();
-            const host = headersList.get('host') || 'ecoroute.stims.co.za';
-            const protocol = host.includes('localhost') || host.includes('127.0.0.1') ? 'http' : 'https';
-            const hostUrl = `${protocol}://${host}`;
+            const hostUrl = incomingServerUrl || 'https://ecoroute.stims.co.za';
 
+            // FIXED: Matches case fields parameter data formats exactly ('userId' and 'userEmail')
             const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: userProfile.id,
-                    userEmail: userProfile.email || tokenRecord.user_email || '',
+                    userEmail: userProfile.email || '',
                     callbackUrl: `${hostUrl}/dashboard`
                 })
             });

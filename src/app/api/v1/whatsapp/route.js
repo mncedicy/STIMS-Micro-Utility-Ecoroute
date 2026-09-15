@@ -1,4 +1,4 @@
-// File Location: src/app/api/v1/whatsapp/route.js
+// src/app/api/v1/whatsapp/route.js
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabaseAdminServer';
@@ -13,10 +13,14 @@ export async function GET(req) {
         const token = searchParams.get('hub.verify_token');
         const challenge = searchParams.get('hub.challenge');
 
-        const fallbackToken = 'ecoroute_secret_handshake';
         const envToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim();
 
-        const isTokenValid = (token === fallbackToken) || (envToken && token === envToken);
+        if (!envToken) {
+            console.error('🚨 [WhatsApp Webhook Setup Fault]: WHATSAPP_VERIFY_TOKEN is completely unassigned in server variables.');
+            return new Response('Internal Configuration Error', { status: 500 });
+        }
+
+        const isTokenValid = token === envToken;
 
         if (mode === 'subscribe' && isTokenValid) {
             return new Response(String(challenge), {
@@ -28,7 +32,7 @@ export async function GET(req) {
             });
         }
 
-        return new Response('Forbidden', { status: 403 });
+        return new Response('Forbidden Verification Token Mismatch', { status: 403 });
     } catch (err) {
         return new Response(err.message, { status: 500 });
     }
@@ -39,6 +43,10 @@ export async function POST(req) {
         const { handleIncomingCommand } = await import('./commandParser');
         const { verifyMetaWebhookSignature } = await import('./security');
         const { sendMetaWhatsappMessage } = await import('./metaClient');
+
+        const hostHeader = req.headers.get('host') || 'ecoroute.stims.co.za';
+        const protocol = hostHeader.includes('localhost') || hostHeader.includes('127.0.0.1') ? 'http' : 'https';
+        const incomingServerUrl = `${protocol}://${hostHeader}`;
 
         const rawBodyText = await req.text();
         const signatureHeader = req.headers.get('x-hub-signature-256') || '';
@@ -68,15 +76,15 @@ export async function POST(req) {
 
         const incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
 
-        // Extract last 9 digits (e.g. "784884519") to ignore country codes and leading zeroes
-        const lastDigits = cleanPhoneNumber.slice(-9);
+        const numericOnly = cleanPhoneNumber.replace(/\D/g, '');
+        const lastDigits = numericOnly.length >= 9 ? numericOnly.slice(-9) : numericOnly;
 
         console.log(`🔍 [Lookup Request] Mobile: ${cleanPhoneNumber} | Searching Pattern: %${lastDigits}%`);
 
-        // Query using ILIKE substring matching to bypass spacing or prefix mismatch
+        // FIXED: Added 'email' cleanly back into the select tracking string array parameters matrix
         const { data: userProfiles, error: profileError } = await supabaseAdmin
             .from('profiles')
-            .select('id, first_name, company, phone_number')
+            .select('id, first_name, surname, company, email, phone_number')
             .ilike('phone_number', `%${lastDigits}%`);
 
         if (profileError) {
@@ -97,7 +105,6 @@ export async function POST(req) {
 
         console.log(`✅ [Profile Matched]: User ID = ${userProfile.id}, Name = ${userProfile.first_name}`);
 
-        // Fetch User Token Quota
         const { data: tokenRecord } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .select('*')
@@ -120,7 +127,8 @@ export async function POST(req) {
             usageCap,
             businessPhoneNumberId,
             cleanPhoneNumber,
-            supabaseAdmin
+            supabaseAdmin,
+            incomingServerUrl
         });
 
         return NextResponse.json({ success: true }, { status: 200 });
