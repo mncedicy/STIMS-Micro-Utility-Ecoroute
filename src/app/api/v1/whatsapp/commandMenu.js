@@ -10,11 +10,17 @@ export async function displayWhatsappMainMenu({
     customVehicles = [],
     businessPhoneNumberId,
     cleanPhoneNumber,
-    incomingServerUrl
+    incomingServerUrl,
+    subscriptionRecord
 }) {
     const cleanInput = String(incomingMessage || '').trim().toLowerCase();
-    const currentSubStatus = String(tokenRecord?.status || 'free').toLowerCase();
-    const isFreeTier = !['active', 'premium', 'pro'].includes(currentSubStatus);
+
+    // FIXED: Explicitly isolate the active string value state parameter
+    const currentSubStatus = String(subscriptionRecord?.status || 'free').toLowerCase();
+
+    // FIXED: Strict evaluation matching your exact rule: if status is not 'active', it counts as free tier
+    const isFreeTier = currentSubStatus !== 'active';
+
     const firstName = userProfile?.first_name || 'Partner';
     const companyName = userProfile?.company ? ` (${userProfile.company})` : '';
     const availableZar = availableBalanceCents / 100;
@@ -80,16 +86,15 @@ export async function displayWhatsappMainMenu({
     if (cleanInput === '6' && isFreeTier) {
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Connecting to checkout gateways... Please check your tray link to complete verification upgrades.`);
         try {
-            const hostUrl = incomingServerUrl || 'https://ecoroute.stims.co.za';
+            const hostUrl = incomingServerUrl || 'https://stims.co.za';
 
-            // FIXED: Matches case fields parameter data formats exactly ('userId' and 'userEmail')
             const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: userProfile.id,
-                    userEmail: userProfile.email || '',
-                    callbackUrl: `${hostUrl}/dashboard`
+                    userEmail: userProfile.email || subscriptionRecord?.user_email || '',
+                    callbackUrl: `${hostUrl}`
                 })
             });
             const result = await apiRes.json();

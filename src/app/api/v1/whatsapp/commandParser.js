@@ -22,10 +22,12 @@ export async function handleIncomingCommand({
         return;
     }
 
-    // Pull remaining sub-menu variables concurrently
-    const [ledgerQuery, vehiclesQuery] = await Promise.all([
+    // Ensure this update is active inside your src/app/api/v1/whatsapp/commandParser.js file:
+
+    const [ledgerQuery, vehiclesQuery, subQuery] = await Promise.all([
         supabaseAdmin.from('referral_payouts_ledger').select('amount_cents, payout_status').eq('referrer_id', userProfile.id),
-        supabaseAdmin.from('ecoroute_vehicles').select('registration, registration_number, make, model').eq('user_id', userProfile.id).eq('is_active', true)
+        supabaseAdmin.from('ecoroute_vehicles').select('registration, registration_number, make, model').eq('user_id', userProfile.id).eq('is_active', true),
+        supabaseAdmin.from('user_subscriptions').select('tier, status, user_email').eq('user_id', userProfile.id).eq('app_id', 'ecoroute').maybeSingle()
     ]);
 
     const availableBalanceCents = (ledgerQuery.data || [])
@@ -40,6 +42,8 @@ export async function handleIncomingCommand({
         customVehicles: vehiclesQuery.data || [],
         businessPhoneNumberId,
         cleanPhoneNumber,
-        incomingServerUrl
+        incomingServerUrl,
+        subscriptionRecord: subQuery.data // Forward the subscription table values forward flawlessly
     });
+
 }
