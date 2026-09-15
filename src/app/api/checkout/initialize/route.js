@@ -49,20 +49,23 @@ export async function OPTIONS(req) {
 
 export async function POST(req) {
     const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
+        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+        process.env.SUPABASE_SERVICE_ROLE_KEY || ''
     );
 
     const corsHeaders = getCorsHeaders(req);
 
     try {
         const body = await req.json();
-        const { userId, userEmail } = body;
+
+        // FIXED: Added variable lookup normalization logic paths to support both camelCase and snake_case entry requests
+        const resolvedUserId = body.userId || body.user_id;
+        const resolvedUserEmail = body.userEmail || body.user_email;
 
         const AppId = 'ecoroute';
         const finalCallbackUrl = body.callbackUrl || body.callback_url;
 
-        if (!userId || !userEmail) {
+        if (!resolvedUserId || !resolvedUserEmail) {
             return NextResponse.json({ success: false, error: "Missing user identification parameters." }, { status: 400, headers: corsHeaders });
         }
 
@@ -72,11 +75,11 @@ export async function POST(req) {
             return NextResponse.json({ success: false, error: "Server misconfiguration." }, { status: 500, headers: corsHeaders });
         }
 
-        // Fetch corresponding user corporate profile details
+        // Fetch corresponding user corporate profile details using resolved ID values
         const { data: profileConfig, error: profileQueryError } = await supabaseAdmin
             .from('profiles')
             .select('first_name, surname, company')
-            .eq('id', userId)
+            .eq('id', resolvedUserId)
             .maybeSingle();
 
         if (profileQueryError) {
@@ -103,11 +106,11 @@ export async function POST(req) {
         const { error } = await supabaseAdmin
             .from('user_subscriptions')
             .insert({
-                user_id: userId,
+                user_id: resolvedUserId,
                 app_id: AppId,
                 status: 'inactive',
                 tier: 'free',
-                user_email: userEmail,
+                user_email: resolvedUserEmail,
                 current_period_start: periodStart,
                 current_period_end: calculatedEnd.toISOString(),
                 updated_at: new Date().toISOString()
@@ -144,21 +147,21 @@ export async function POST(req) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                email: userEmail.trim().toLowerCase(),
+                email: resolvedUserEmail.trim().toLowerCase(),
                 amount: dynamicAmount,
                 currency: 'ZAR',
                 callback_url: finalCallbackUrl,
                 ...(globalPlanIdToken && { plan: globalPlanIdToken }),
 
                 metadata: {
-                    user_id: userId,
+                    user_id: resolvedUserId,
                     app_id: AppId,
                     tier: 'premium',
                     name: targetName,
                     surname: targetSurname,
                     company: targetCompany,
                     custom_fields: [
-                        { variable_name: "user_id", display_name: "User ID", value: userId },
+                        { variable_name: "user_id", display_name: "User ID", value: resolvedUserId },
                         { variable_name: "app_id", display_name: "App ID", value: AppId },
                         { variable_name: "company_name", display_name: "Company Name", value: targetCompany },
                         { variable_name: "customer_name", display_name: "Customer Name", value: `${targetName} ${targetSurname}`.trim() }
