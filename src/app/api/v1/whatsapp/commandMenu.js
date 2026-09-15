@@ -1,5 +1,6 @@
 // src/app/api/v1/whatsapp/commandMenu.js
 
+import { headers } from 'next/headers';
 import { sendMetaWhatsappMessage } from './metaClient';
 
 export async function displayWhatsappMainMenu({
@@ -79,12 +80,20 @@ export async function displayWhatsappMainMenu({
     if (cleanInput === '6' && isFreeTier) {
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Connecting to checkout gateways... Please check your tray link to complete verification upgrades.`);
         try {
-            const hostUrl = window.location.origin;
-            // Fixed: Prepend complete host domain URL context to safeguard isolated backend server fetches
+            // FIXED: Dynamically read the incoming request headers securely from the server thread context
+            const headersList = await headers();
+            const host = headersList.get('host') || 'ecoroute.stims.co.za';
+            const protocol = host.includes('localhost') || host.includes('127.0.0.1') ? 'http' : 'https';
+            const hostUrl = `${protocol}://${host}`;
+
             const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: userProfile.id, userEmail: userProfile.email || tokenRecord.user_email || '', callbackUrl: `${hostUrl}/dashboard` })
+                body: JSON.stringify({
+                    userId: userProfile.id,
+                    userEmail: userProfile.email || tokenRecord.user_email || '',
+                    callbackUrl: `${hostUrl}/dashboard`
+                })
             });
             const result = await apiRes.json();
             if (result.success && result.url) {
