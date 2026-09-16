@@ -19,13 +19,12 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         const selectedVehicle = activeVehicles[vehicleIndex];
         const vehicleId = selectedVehicle.id;
 
-        // FIXED: Replaced the raw SQL string cast with a native JavaScript empty object literal to fix the Supabase syntax error
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
             .eq('id', tokenRecord.id);
 
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⚙️ Processing calculator run for vehicle: ${selectedVehicle.registration_number || selectedVehicle.registration}...`);
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⚙️ Processing calculator run for vehicle: ${selectedVehicle.registration_number || selectedVehicle.registration || 'FLEET'}...`);
 
         const form = { type: 'vehicle', distance: targetDistance.toString(), unit: 'km', vehicle_id: vehicleId, save_log: true };
         const { calculatedKg, metadataLog } = await processCategoryEmissions('vehicle', form, tokenRecord?.api_token || '');
@@ -43,8 +42,9 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             return true;
         }
 
+        // FIXED: Using updated query bounds handles matching smoothly without pre-emptive drops
         if (activeVehicles.length === 0) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "ℹ️ Aborted: No active vehicles found. Link an asset row via your dashboard console first.");
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "ℹ️ Aborted: No active vehicles found on this profile profile. Link an asset row via your dashboard panel first.");
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
             return true;
         }
@@ -62,12 +62,6 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         });
 
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, prompt);
-        return true;
-    }
-
-    if (lowerMessage === '1') {
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_VEHICLE_DISTANCE' }).eq('id', tokenRecord.id);
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *VEHICLE AUDIT SETUP* \n\nPlease type the total trip travel path: \n\n*DISTANCE (KM)*");
         return true;
     }
 
