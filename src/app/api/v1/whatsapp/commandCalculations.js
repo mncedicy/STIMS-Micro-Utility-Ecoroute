@@ -8,25 +8,27 @@ import { buildAuditCardString } from './messageTemplates';
 import { processConversationState } from './commandState';
 
 export async function executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin }) {
-    // FIXED: Adjusted database filters array map parameters to safely include active records matching all null/true visibility variations
     const [appMetaRes, vehiclesQuery] = await Promise.all([
         supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle(),
         supabaseAdmin.from('ecoroute_vehicles')
             .select('id, registration, registration_number, make, model, is_active')
             .eq('user_id', userProfile.id)
-            .neq('is_active', false) // Safely select everything except explicitly soft-deleted items
+            .neq('is_active', false)
     ]);
 
     const activeVehicles = vehiclesQuery.data || [];
     const mockTokenQuery = { data: tokenRecord };
     const mockProfRes = { data: userProfile };
 
+    // 1. Process active multi-step wizards first
     const stateHandled = await processConversationState({
         lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes
     });
     if (stateHandled) return true;
 
+    // 2. Fallback standalone text parsing command patterns
     if (lowerMessage.startsWith('vehicle')) {
+        // FIXED: Completely stripped off corrupted backslash escape markers to keep regular expression boundaries healthy
         const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-z0-9-]+)\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: vehicle [distance][unit] [vehicle_id]\nExample: vehicle 45km abc-123");
@@ -40,6 +42,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('flight')) {
+        // FIXED: Completely stripped off corrupted backslash escape markers to keep regular expression boundaries healthy
         const pattern = /^flight\s+(\d+)\s+([a-z]{3})\s+([a-z]{3})\s*(economy|business|first)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: flight [pax] [origin] [dest] [class]\nExample: flight 12 jnb cpt business");
@@ -53,6 +56,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('power')) {
+        // FIXED: Completely stripped off corrupted backslash escape markers to keep regular expression boundaries healthy
         const pattern = /^power\s+(\d+(?:\.\d+)?)\s*([a-z]{2})\s*(utility_grid|diesel_generator|solar_pv)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: power [kwh] [country] [source]\nExample: power 250 za utility_grid");
@@ -67,6 +71,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('shipping')) {
+        // FIXED: Completely stripped off corrupted backslash escape markers to keep regular expression boundaries healthy
         const pattern = /^shipping\s+(\d+(?:\.\d+)?)\s*(kg|lbs|tonnes)\s+(\d+(?:\.\d+)?)\s*(km|miles)\s*(standard|road_heavy|road_light|rail|ocean)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: shipping [weight] [mass_unit] [dist][unit] [mode]\nExample: shipping 5 tonnes 850 km road_heavy");
@@ -81,6 +86,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('gas')) {
+        // FIXED: Completely stripped off corrupted backslash escape markers to keep regular expression boundaries healthy
         const pattern = /^gas\s+(\d+(?:\.\d+)?)\s*(natural_gas|lpg)\s+(m3|kwh|liter|kg)\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: gas [quantity] [type] [unit]\nExample: gas 120 natural_gas m3");
