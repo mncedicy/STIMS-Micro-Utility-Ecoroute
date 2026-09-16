@@ -7,6 +7,8 @@ import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
 export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
+
+    // FIXED: Grouped all running shipping wizard stages inside a strict parent state matching context block
     if (currentState === 'AWAITING_SHIPPING_MODE') {
         const choice = lowerMessage.trim();
         const modesMap = { "1": "road_heavy", "2": "road_light", "3": "rail", "4": "ocean" };
@@ -15,7 +17,6 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
         const finalWeight = pendingPayload?.cargo_weight;
         const finalDistance = pendingPayload?.distance;
 
-        // FIXED: Replaced the raw SQL string cast with a native JavaScript empty object literal to fix the Supabase syntax error
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
@@ -69,12 +70,6 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
             .eq('id', tokenRecord.id);
 
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING DISPATCH DETAILS*\n\nPlease specify total cargo transport length:\n\n*DISTANCE (KM)*");
-        return true;
-    }
-
-    if (lowerMessage === '2') {
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_SHIPPING_WEIGHT' }).eq('id', tokenRecord.id);
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
         return true;
     }
 

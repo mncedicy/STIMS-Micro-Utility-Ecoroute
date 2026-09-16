@@ -7,6 +7,8 @@ import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
 export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
+
+    // FIXED: Grouped gas step transformations inside a distinct parent state verification loop
     if (currentState === 'AWAITING_GAS_UNIT') {
         const choice = lowerMessage.trim();
         const unitsMap = { "1": "m3", "2": "kwh", "3": "liter", "4": "kg" };
@@ -81,12 +83,6 @@ export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord
             `*2* — LPG (Liquefied Petroleum Bottled Gas)`;
 
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, typePrompt);
-        return true;
-    }
-
-    if (lowerMessage === '5') {
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_GAS_QTY' }).eq('id', tokenRecord.id);
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *GAS COMBUSTION SETUP* \n\nPlease enter the total fuel volume burned:\n\n*QUANTITY CAPACITY AMOUNT*");
         return true;
     }
 
