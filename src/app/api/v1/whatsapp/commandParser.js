@@ -18,11 +18,11 @@ export async function handleIncomingCommand({
     const isCommand = ['vehicle', 'flight', 'power', 'shipping', 'gas'].some(cmd => lowerMessage.startsWith(cmd));
 
     if (isCommand) {
+        // If a direct parameter command string is sent, bypass current menus and reset tracking states
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         await executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin });
         return;
     }
-
-    // Ensure this update is active inside your src/app/api/v1/whatsapp/commandParser.js file:
 
     const [ledgerQuery, vehiclesQuery, subQuery] = await Promise.all([
         supabaseAdmin.from('referral_payouts_ledger').select('amount_cents, payout_status').eq('referrer_id', userProfile.id),
@@ -34,16 +34,19 @@ export async function handleIncomingCommand({
         .filter(row => row.payout_status === 'unpaid')
         .reduce((sum, row) => sum + row.amount_cents, 0);
 
+    // Re-verify the current conversational milestone progress context fields
+    const updatedTokenRecord = { ...tokenRecord, current_whatsapp_state: tokenRecord.current_whatsapp_state };
+
     await displayWhatsappMainMenu({
         incomingMessage,
         userProfile,
-        tokenRecord,
+        tokenRecord: updatedTokenRecord,
         availableBalanceCents,
         customVehicles: vehiclesQuery.data || [],
         businessPhoneNumberId,
         cleanPhoneNumber,
         incomingServerUrl,
-        subscriptionRecord: subQuery.data // Forward the subscription table values forward flawlessly
+        subscriptionRecord: subQuery.data,
+        supabaseAdmin // Forward admin proxy to enable state-shifting changes
     });
-
 }

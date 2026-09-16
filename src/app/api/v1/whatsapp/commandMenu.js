@@ -11,21 +11,25 @@ export async function displayWhatsappMainMenu({
     businessPhoneNumberId,
     cleanPhoneNumber,
     incomingServerUrl,
-    subscriptionRecord
+    supabaseAdmin // Accept the admin client natively to update sub-menu milestones
 }) {
     const cleanInput = String(incomingMessage || '').trim().toLowerCase();
-
-    // FIXED: Explicitly isolate the active string value state parameter
-    const currentSubStatus = String(subscriptionRecord?.status || 'free').toLowerCase();
-
-    // FIXED: Strict evaluation matching your exact rule: if status is not 'active', it counts as free tier
+    const currentSubStatus = String(tokenRecord?.status || 'free').toLowerCase();
     const isFreeTier = currentSubStatus !== 'active';
-
     const firstName = userProfile?.first_name || 'Partner';
     const companyName = userProfile?.company ? ` (${userProfile.company})` : '';
     const availableZar = availableBalanceCents / 100;
 
+    // =========================================================================
+    // INTERCEPT TOP-LEVEL SYSTEM MENU OPTIONS (Only if not inside a sub-menu state)
+    // =========================================================================
     if (cleanInput === '1') {
+        // FIXED: Commit state flag parameter immediately to isolate the active conversational window context
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', updated_at: new Date().toISOString() })
+            .eq('id', tokenRecord.id);
+
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber,
             `📊 *1. AUDIT CALCULATOR SUB-MENU* \n\n` +
             `1 Vehicle\n` +
@@ -87,15 +91,10 @@ export async function displayWhatsappMainMenu({
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Connecting to checkout gateways... Please check your tray link to complete verification upgrades.`);
         try {
             const hostUrl = incomingServerUrl || 'https://stims.co.za';
-
             const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: userProfile.id,
-                    userEmail: userProfile.email || subscriptionRecord?.user_email || '',
-                    callbackUrl: `${hostUrl}`
-                })
+                body: JSON.stringify({ userId: userProfile.id, userEmail: userProfile.email || '', callbackUrl: `${hostUrl}` })
             });
             const result = await apiRes.json();
             if (result.success && result.url) {
