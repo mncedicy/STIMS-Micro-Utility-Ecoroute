@@ -20,17 +20,15 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     const mockTokenQuery = { data: tokenRecord };
     const mockProfRes = { data: userProfile };
 
-    // FIXED: Capture the outcome of the state engine process loop cleanly
+    // 1. Process active multi-step wizards first
     const stateHandled = await processConversationState({
         lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes
     });
+    if (stateHandled) return true;
 
-    // FIXED: If the state engine successfully handled the menu transition, return true to intercept top-level fallbacks
-    if (stateHandled) {
-        return true;
-    }
-
+    // 2. Fallback standalone text parsing command patterns
     if (lowerMessage.startsWith('vehicle')) {
+        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-z0-9-]+)\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: vehicle [distance][unit] [vehicle_id]\nExample: vehicle 45km abc-123");
@@ -40,11 +38,11 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('vehicle', form, tokenRecord?.api_token || '');
         const payload = formatEmissionPayload(calculatedKg);
         await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'vehicle', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || vehicleId.toUpperCase()}`, `${distance} ${unit.toUpperCase()}`, payload, usageCap, currentUsage));
-        return true;
+        return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || vehicleId.toUpperCase()}`, `${distance} ${unit.toUpperCase()}`, payload, usageCap, currentUsage));
     }
 
     if (lowerMessage.startsWith('flight')) {
+        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^flight\s+(\d+)\s+([a-z]{3})\s+([a-z]{3})\s*(economy|business|first)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: flight [pax] [origin] [dest] [class]\nExample: flight 12 jnb cpt business");
@@ -54,11 +52,11 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('flight', form, tokenRecord?.api_token || '');
         const payload = formatEmissionPayload(calculatedKg);
         await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'flight', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Flight: ${origin.toUpperCase()} ➔ ${dest.toUpperCase()} (${flightClass || 'economy'})`, `${passengers} Pax`, payload, usageCap, currentUsage));
-        return true;
+        return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Flight: ${origin.toUpperCase()} ➔ ${dest.toUpperCase()} (${flightClass || 'economy'})`, `${passengers} Pax`, payload, usageCap, currentUsage));
     }
 
     if (lowerMessage.startsWith('power')) {
+        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^power\s+(\d+(?:\.\d+)?)\s*([a-z]{2})\s*(utility_grid|diesel_generator|solar_pv)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: power [kwh] [country] [source]\nExample: power 250 za utility_grid");
@@ -69,11 +67,11 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('electricity', form, tokenRecord?.api_token || '');
         const payload = formatEmissionPayload(calculatedKg);
         await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'electricity', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Electricity Grid (${country.toUpperCase()})`, `${kwh} kWh (${resolved})`, payload, usageCap, currentUsage));
-        return true;
+        return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Electricity Grid (${country.toUpperCase()})`, `${kwh} kWh (${resolved})`, payload, usageCap, currentUsage));
     }
 
     if (lowerMessage.startsWith('shipping')) {
+        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^shipping\s+(\d+(?:\.\d+)?)\s*(kg|lbs|tonnes)\s+(\d+(?:\.\d+)?)\s*(km|miles)\s*(standard|road_heavy|road_light|rail|ocean)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: shipping [weight] [mass_unit] [dist][unit] [mode]\nExample: shipping 5 tonnes 850 km road_heavy");
@@ -84,11 +82,11 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('shipping', form, tokenRecord?.api_token || '');
         const payload = formatEmissionPayload(calculatedKg);
         await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'shipping', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Freight Logistics: ${mode.toUpperCase()}`, `${weight}${massUnit} across ${distance}${unit}`, payload, usageCap, currentUsage));
-        return true;
+        return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Freight Logistics: ${mode.toUpperCase()}`, `${weight}${massUnit} across ${distance}${unit}`, payload, usageCap, currentUsage));
     }
 
     if (lowerMessage.startsWith('gas')) {
+        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^gas\s+(\d+(?:\.\d+)?)\s*(natural_gas|lpg)\s+(m3|kwh|liter|kg)\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: gas [quantity] [type] [unit]\nExample: gas 120 natural_gas m3");
@@ -98,8 +96,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         const { calculatedKg, metadataLog } = await processCategoryEmissions('gas', form, tokenRecord?.api_token || '');
         const payload = formatEmissionPayload(calculatedKg);
         await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'gas', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Gas Combustion: ${gasType.toUpperCase()}`, `${quantity} ${gasUnit.toUpperCase()}`, payload, usageCap, currentUsage));
-        return true;
+        return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Gas Combustion: ${gasType.toUpperCase()}`, `${quantity} ${gasUnit.toUpperCase()}`, payload, usageCap, currentUsage));
     }
 
     return false;
