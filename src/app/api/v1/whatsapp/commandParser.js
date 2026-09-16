@@ -17,7 +17,6 @@ export async function handleIncomingCommand({
     const lowerMessage = String(incomingMessage || '').trim().toLowerCase();
     const isDirectTextCommand = ['vehicle', 'flight', 'power', 'shipping', 'gas'].some(cmd => lowerMessage.startsWith(cmd));
 
-    // 1. If an operator sends a direct command, clear any temporary menu steps and execute calculation
     if (isDirectTextCommand) {
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
@@ -28,15 +27,16 @@ export async function handleIncomingCommand({
         return;
     }
 
-    // 2. FIXED: Route all numeric/text entries through the state engine first to check for sub-menu or wizard step interactions
+    // FIXED: Capture the outcome of the calculation state process loop cleanly 
     const wasStateHandled = await executeEmissionsCalculations({
         lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin
     });
 
-    // If caught by sub-menu selections or dynamic prompts, stop execution here
-    if (wasStateHandled) return;
+    // FIXED: If the conversational sub-menu or wizard intercept caught the message, abort out to prevent menu redraws
+    if (wasStateHandled === true) {
+        return;
+    }
 
-    // 3. If no state is active and no sub-menu matches, default back to top-level menu presentation
     const [ledgerQuery, vehiclesQuery, subQuery] = await Promise.all([
         supabaseAdmin.from('referral_payouts_ledger').select('amount_cents, payout_status').eq('referrer_id', userProfile.id),
         supabaseAdmin.from('ecoroute_vehicles').select('registration, registration_number, make, model').eq('user_id', userProfile.id).eq('is_active', true),
