@@ -8,14 +8,33 @@ import { buildAuditCardString } from './messageTemplates';
 
 export async function handleRouteWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
 
+    // FIXED: Global escape hatch. If the user wants to go back, clear states immediately
+    if (['menu', 'main menu', 'exit', 'cancel', 'stop'].includes(lowerMessage.trim())) {
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
+            .eq('id', tokenRecord.id);
+        return false; // Returning false lets execution fall through to redraw the main menu natively
+    }
+
     // STEP 3: USER SELECTED THE VEHICLE NUMBER INDEX
     if (currentState === 'AWAITING_ROUTE_VEHICLE') {
         const vehicleIndex = parseInt(lowerMessage, 10) - 1;
         const targetDistance = pendingPayload?.distance;
 
         if (isNaN(vehicleIndex) || vehicleIndex < 0 || vehicleIndex >= activeVehicles.length) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Invalid selection. Please reply with a number between 1 and ${activeVehicles.length} to map your route run.`);
-            return true;
+            // FIXED: If they make an invalid selection, warn them but clear the stuck state so they aren't trapped forever
+            await supabaseAdmin
+                .from('ecoroute_corporate_api_tokens')
+                .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
+                .eq('id', tokenRecord.id);
+
+            await sendMetaWhatsappMessage(
+                businessPhoneNumberId,
+                cleanPhoneNumber,
+                `❌ Invalid selection parameter. Session reset. Please type a number matching your vehicle list rows or type 'menu' to return.`
+            );
+            return false; // Fall through to show the main menu card
         }
 
         const selectedVehicle = activeVehicles[vehicleIndex];
@@ -28,7 +47,6 @@ export async function handleRouteWorkflow({ lowerMessage, userProfile, tokenReco
 
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `🗺️ Computing terrain matrix optimizations and routing traces...`);
 
-        // Runs identical backend vehicle calculations mapping for the terrain route track log
         const form = { type: 'vehicle', distance: targetDistance.toString(), unit: 'km', vehicle_id: vehicleId, save_log: true };
         const { calculatedKg, metadataLog } = await processCategoryEmissions('vehicle', form, tokenRecord?.api_token || '');
         const payload = formatEmissionPayload(calculatedKg);
