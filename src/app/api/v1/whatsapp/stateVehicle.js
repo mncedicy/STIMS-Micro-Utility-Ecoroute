@@ -42,7 +42,6 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             return true;
         }
 
-        // FIXED: Await the dynamic database update transaction completely to prevent thread drops
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({ current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION', pending_whatsapp_payload: { distance: numericDistance } })
@@ -50,7 +49,6 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
 
         let prompt = `🚛 *SELECT VEHICLE ROW NUMBER* 🚛\n\nChoose an asset profile by replying with its number:\n\n`;
         activeVehicles.forEach((veh, index) => {
-            // FIXED: Standardized text properties alignment strictly matching your schema 'registration_number' column parameter
             const reg = String(veh.registration_number || 'FLEET').toUpperCase();
             const make = String(veh.make || 'ASSET').toUpperCase();
             prompt += `*${index + 1}* — ${reg} [${make}]\n`;
