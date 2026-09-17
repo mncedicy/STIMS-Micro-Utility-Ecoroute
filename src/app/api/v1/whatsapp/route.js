@@ -56,10 +56,12 @@ export async function POST(req) {
 
         const body = JSON.parse(rawBodyText);
 
+        // FIXED: Restored strict structural array subscripts verification to successfully capture Meta incoming payload notifications
         if (!body.object || !body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
             return NextResponse.json({ success: true, status: 'SKIPPED_EVENT' }, { status: 200 });
         }
 
+        // FIXED: Extracting values safely utilizing exact [0] base locations
         const valueBlock = body.entry[0].changes[0].value;
         const messageNode = valueBlock.messages[0];
         const metadataNode = valueBlock.metadata || {};
@@ -67,7 +69,6 @@ export async function POST(req) {
         const cleanPhoneNumber = String(messageNode.from || '').trim();
         const businessPhoneNumberId = metadataNode.phone_number_id || "1307900412406936";
 
-        // FIXED: Re-mapped the input parser variable to support native Meta touch-button component replies
         let incomingMessage = '';
         const messageType = messageNode.type;
 
@@ -76,14 +77,13 @@ export async function POST(req) {
         } else if (messageType === 'interactive') {
             const interactiveType = messageNode.interactive?.type;
             if (interactiveType === 'button_reply') {
-                // Captures unique button element ID (e.g. 'menu_option_1')
                 incomingMessage = String(messageNode.interactive?.button_reply?.id || '').trim().toLowerCase();
             } else if (interactiveType === 'list_reply') {
-                // Captures unique list selection row item ID (e.g. 'menu_option_2')
                 incomingMessage = String(messageNode.interactive?.list_reply?.id || '').trim().toLowerCase();
             }
+            console.log(`🎯 [Webhook Parser Engine] Captured Interactive Click ID: "${incomingMessage}"`);
         } else {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: Plain text or interactive component button selections only.");
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: Plain text or interactive menu selection button replies only.");
             return NextResponse.json({ success: true }, { status: 200 });
         }
 
