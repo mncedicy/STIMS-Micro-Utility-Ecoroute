@@ -10,12 +10,14 @@ import { handleTaxWorkflow } from './stateTax';
 
 /**
  * Master State Router: Isolates and directs conversational traffic based on the active state string token.
+ * Forwards structural server URL context seamlessly to nested child handlers.
  */
-export async function processConversationState({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes }) {
+export async function processConversationState({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, incomingServerUrl }) {
     const currentState = tokenRecord?.current_whatsapp_state || null;
     const pendingPayload = tokenRecord?.pending_whatsapp_payload || {};
 
-    const sharedContext = { lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload };
+    // FIXED: Embedded incomingServerUrl directly within the shared contextual tracking envelope passed to children
+    const sharedContext = { lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload, incomingServerUrl };
 
     console.log(`📡 [State Engine Router] Evaluating isolated routing path for state: "${currentState}"`);
 
@@ -46,8 +48,8 @@ export async function processConversationState({ lowerMessage, userProfile, toke
         return await handleGasWorkflow(sharedContext);
     }
 
-    // FIXED: Enforce strict condition check parameters to catch active tax actions BEFORE any sub-menu checks run
     if (currentState === 'AWAITING_TAX_PERIOD' || currentState === 'AWAITING_TAX_REPORT_ACTION') {
+        // FIXED: Forwards execution flow down into the dynamic tax processor module with absolute server urls
         return await handleTaxWorkflow(sharedContext);
     }
 
@@ -76,7 +78,6 @@ export async function processConversationState({ lowerMessage, userProfile, toke
             return true;
         }
 
-        // If an unmatched command comes in, clear the sub-menu checkpoint state flag
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
     }
 

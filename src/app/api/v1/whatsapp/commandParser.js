@@ -23,19 +23,19 @@ export async function handleIncomingCommand({
             .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
             .eq('id', tokenRecord.id);
 
-        await executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin });
+        await executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, incomingServerUrl });
         return;
     }
 
+    // FIXED: Passed incomingServerUrl context seamlessly through to the emissions calculations router loop
     const wasStateHandled = await executeEmissionsCalculations({
-        lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin
+        lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, incomingServerUrl
     });
 
     if (wasStateHandled === true) {
         return;
     }
 
-    // FIXED: Dropped the invalid non-existent 'registration' column name from the query parameters selection matrix safely
     const [ledgerQuery, vehiclesQuery, subQuery] = await Promise.all([
         supabaseAdmin.from('referral_payouts_ledger').select('amount_cents, payout_status').eq('referrer_id', userProfile.id),
         supabaseAdmin.from('ecoroute_vehicles').select('id, registration_number, make, model, is_active').eq('user_id', userProfile.id),
