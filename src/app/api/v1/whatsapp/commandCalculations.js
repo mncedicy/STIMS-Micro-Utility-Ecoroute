@@ -26,9 +26,8 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     });
     if (stateHandled) return true;
 
-    // 2. Fallback standalone text parsing command patterns
+    // 2. Fallback standalone text parsing command patterns (Using pure regex literals)
     if (lowerMessage.startsWith('vehicle')) {
-        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-z0-9-]+)\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: vehicle [distance][unit] [vehicle_id]\nExample: vehicle 45km abc-123");
@@ -42,7 +41,6 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('flight')) {
-        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^flight\s+(\d+)\s+([a-z]{3})\s+([a-z]{3})\s*(economy|business|first)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: flight [pax] [origin] [dest] [class]\nExample: flight 12 jnb cpt business");
@@ -56,7 +54,6 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('power')) {
-        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^power\s+(\d+(?:\.\d+)?)\s*([a-z]{2})\s*(utility_grid|diesel_generator|solar_pv)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: power [kwh] [country] [source]\nExample: power 250 za utility_grid");
@@ -71,7 +68,6 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('shipping')) {
-        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^shipping\s+(\d+(?:\.\d+)?)\s*(kg|lbs|tonnes)\s+(\d+(?:\.\d+)?)\s*(km|miles)\s*(standard|road_heavy|road_light|rail|ocean)?\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: shipping [weight] [mass_unit] [dist][unit] [mode]\nExample: shipping 5 tonnes 850 km road_heavy");
@@ -86,7 +82,6 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('gas')) {
-        // FIXED: Dropped the corrupted backslash escape characters so the end anchor evaluates correctly
         const pattern = /^gas\s+(\d+(?:\.\d+)?)\s*(natural_gas|lpg)\s+(m3|kwh|liter|kg)\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: gas [quantity] [type] [unit]\nExample: gas 120 natural_gas m3");

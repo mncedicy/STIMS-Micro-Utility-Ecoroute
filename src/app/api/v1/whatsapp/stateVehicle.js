@@ -42,7 +42,6 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             return true;
         }
 
-        // FIXED: Using updated query bounds handles matching smoothly without pre-emptive drops
         if (activeVehicles.length === 0) {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "ℹ️ Aborted: No active vehicles found on this profile profile. Link an asset row via your dashboard panel first.");
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
