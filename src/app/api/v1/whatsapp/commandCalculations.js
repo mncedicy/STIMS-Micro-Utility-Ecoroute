@@ -7,11 +7,10 @@ import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 import { processConversationState } from './commandState';
 
-export async function executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin }) {
+export async function executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, incomingServerUrl }) {
     console.log(`ℹ️ [Calculations Gate Entry] Processing message: "${lowerMessage}"`);
 
     try {
-        // FIXED: Pull and fully hydrate active vehicle asset matrices BEFORE running conversational state engines
         const [appMetaRes, vehiclesResult] = await Promise.all([
             supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle(),
             supabaseAdmin.from('ecoroute_vehicles').select('id, registration_number, make, model, is_active').eq('user_id', userProfile.id)
@@ -21,7 +20,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         const mockTokenQuery = { data: tokenRecord };
         const mockProfRes = { data: userProfile };
 
-        // FIXED: Forward the fully hydrated activeVehicles dataset array down into the conversational state handlers
+        // FIXED: Forward incomingServerUrl parameter directly into processConversationState context block boundaries
         const stateHandled = await processConversationState({
             lowerMessage,
             userProfile,
@@ -34,12 +33,12 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
             appMetaRes,
             activeVehicles,
             mockTokenQuery,
-            mockProfRes
+            mockProfRes,
+            incomingServerUrl
         });
 
         if (stateHandled) return true;
 
-        // Fallback standalone text parsing command patterns
         if (lowerMessage.startsWith('vehicle')) {
             const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-z0-9-]+)\$/i;
             const match = lowerMessage.match(pattern);
