@@ -7,8 +7,6 @@ import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
 export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
-
-    // FIXED: Grouped all running shipping wizard stages inside a strict parent state matching context block
     if (currentState === 'AWAITING_SHIPPING_MODE') {
         const choice = lowerMessage.trim();
         const modesMap = { "1": "road_heavy", "2": "road_light", "3": "rail", "4": "ocean" };

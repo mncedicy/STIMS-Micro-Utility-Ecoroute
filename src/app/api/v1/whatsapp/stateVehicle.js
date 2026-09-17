@@ -24,14 +24,14 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
             .eq('id', tokenRecord.id);
 
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⚙️ Processing calculator run for vehicle: ${selectedVehicle.registration_number || selectedVehicle.registration || 'FLEET'}...`);
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⚙️ Processing calculator run for vehicle: ${selectedVehicle.registration_number || 'FLEET'}...`);
 
         const form = { type: 'vehicle', distance: targetDistance.toString(), unit: 'km', vehicle_id: vehicleId, save_log: true };
         const { calculatedKg, metadataLog } = await processCategoryEmissions('vehicle', form, tokenRecord?.api_token || '');
         const payload = formatEmissionPayload(calculatedKg);
 
         await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'vehicle', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || selectedVehicle.registration}`, `${targetDistance} KM`, payload, usageCap, currentUsage));
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || selectedVehicle.registration_number}`, `${targetDistance} KM`, payload, usageCap, currentUsage));
         return true;
     }
 
@@ -42,13 +42,7 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             return true;
         }
 
-        if (activeVehicles.length === 0) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "ℹ️ Aborted: No active vehicles found on this profile profile. Link an asset row via your dashboard panel first.");
-            await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
-            return true;
-        }
-
-        // FIXED: Await the database token mapping updates completely
+        // FIXED: Await the dynamic database update transaction completely to prevent thread drops
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({ current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION', pending_whatsapp_payload: { distance: numericDistance } })
@@ -56,24 +50,13 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
 
         let prompt = `🚛 *SELECT VEHICLE ROW NUMBER* 🚛\n\nChoose an asset profile by replying with its number:\n\n`;
         activeVehicles.forEach((veh, index) => {
-            const reg = (veh.registration_number || veh.registration || 'FLEET').toUpperCase();
-            const make = (veh.make || 'ASSET').toUpperCase();
+            // FIXED: Standardized text properties alignment strictly matching your schema 'registration_number' column parameter
+            const reg = String(veh.registration_number || 'FLEET').toUpperCase();
+            const make = String(veh.make || 'ASSET').toUpperCase();
             prompt += `*${index + 1}* — ${reg} [${make}]\n`;
         });
 
-        // FIXED: Await outbound text streams message completion
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, prompt);
-        return true;
-    }
-
-    // FIXED: Ensure early sub-menu clicks await text transmission before layout threads yield
-    if (lowerMessage === '1') {
-        await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: 'AWAITING_VEHICLE_DISTANCE', pending_whatsapp_payload: {} })
-            .eq('id', tokenRecord.id);
-
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *VEHICLE AUDIT SETUP* \n\nPlease type the total trip travel path: \n\n*DISTANCE (KM)*");
         return true;
     }
 

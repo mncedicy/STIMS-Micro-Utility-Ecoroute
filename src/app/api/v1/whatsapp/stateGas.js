@@ -7,8 +7,6 @@ import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
 export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
-
-    // FIXED: Grouped gas step transformations inside a distinct parent state verification loop
     if (currentState === 'AWAITING_GAS_UNIT') {
         const choice = lowerMessage.trim();
         const unitsMap = { "1": "m3", "2": "kwh", "3": "liter", "4": "kg" };
