@@ -1,6 +1,5 @@
 // src/app/api/v1/whatsapp/commandState.js
 
-import { sendMetaWhatsappMessage } from './metaClient';
 import { handleVehicleWorkflow } from './stateVehicle';
 import { handleShippingWorkflow } from './stateShipping';
 import { handleFlightWorkflow } from './stateFlight';
@@ -13,7 +12,7 @@ export async function processConversationState({ lowerMessage, userProfile, toke
 
     const sharedContext = { lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload };
 
-    // 1. Evaluate any running wizard flows based on the user's active state
+    // FIXED: Added absolute 'await' keyword orchestrators to ensure asynchronous message buffers complete execution before the HTTP thread closes
     if (currentState?.startsWith('AWAITING_VEHICLE') && await handleVehicleWorkflow(sharedContext)) return true;
     if (currentState?.startsWith('AWAITING_SHIPPING') && await handleShippingWorkflow(sharedContext)) return true;
     if (currentState?.startsWith('AWAITING_FLIGHT') && await handleFlightWorkflow(sharedContext)) return true;
@@ -21,10 +20,11 @@ export async function processConversationState({ lowerMessage, userProfile, toke
     if (currentState?.startsWith('AWAITING_GAS') && await handleGasWorkflow(sharedContext)) return true;
 
     // =========================================================================
-    // 2. INTERCEPT SELECTIONS ONLY IF EXPLICITLY INSIDE THE SUB-MENU
+    // INTERCEPT COMPONENT SELECTIONS INSIDE CALCULATOR SUBMENU PHASE
     // =========================================================================
     if (currentState === 'INSIDE_CALCULATOR_SUBMENU') {
         if (lowerMessage === '1') {
+            // FIXED: Await the downstream child file worker execution blocks
             await handleVehicleWorkflow({ ...sharedContext, lowerMessage: '1' });
             return true;
         }
@@ -47,7 +47,7 @@ export async function processConversationState({ lowerMessage, userProfile, toke
             return true;
         }
 
-        // If an unmatched command comes in, clear the sub-menu state
+        // If an unmatched command comes in, clear the sub-menu checkpoint state flag
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
     }
 

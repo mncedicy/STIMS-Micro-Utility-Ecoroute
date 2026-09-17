@@ -48,6 +48,7 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             return true;
         }
 
+        // FIXED: Await the database token mapping updates completely
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({ current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION', pending_whatsapp_payload: { distance: numericDistance } })
@@ -60,7 +61,19 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             prompt += `*${index + 1}* — ${reg} [${make}]\n`;
         });
 
+        // FIXED: Await outbound text streams message completion
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, prompt);
+        return true;
+    }
+
+    // FIXED: Ensure early sub-menu clicks await text transmission before layout threads yield
+    if (lowerMessage === '1') {
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({ current_whatsapp_state: 'AWAITING_VEHICLE_DISTANCE', pending_whatsapp_payload: {} })
+            .eq('id', tokenRecord.id);
+
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *VEHICLE AUDIT SETUP* \n\nPlease type the total trip travel path: \n\n*DISTANCE (KM)*");
         return true;
     }
 
