@@ -22,11 +22,7 @@ export async function displayWhatsappMainMenu({
     const availableZar = availableBalanceCents / 100;
 
     if (cleanInput === '1') {
-        await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', updated_at: new Date().toISOString() })
-            .eq('id', tokenRecord.id);
-
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', updated_at: new Date().toISOString() }).eq('id', tokenRecord.id);
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber,
             `📊 *1. AUDIT CALCULATOR SUB-MENU* \n\n` +
             `1 Vehicle\n` +
@@ -38,13 +34,8 @@ export async function displayWhatsappMainMenu({
         return;
     }
 
-    // FIXED: Intercept Option 2 selection input to switch state flag immediately, triggering dynamic trace wizard prompts
     if (cleanInput === '2') {
-        await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: 'AWAITING_ROUTE_DISTANCE', pending_whatsapp_payload: {} })
-            .eq('id', tokenRecord.id);
-
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_ROUTE_DISTANCE', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber,
             `🗺️ *2. ROUTE CHECKER WIZARD RUN* \n\n` +
             `Please type the terrestrial distance path length to verify tracking optimizations:\n\n` +
@@ -53,12 +44,25 @@ export async function displayWhatsappMainMenu({
         return;
     }
 
+    // FIXED: Intercept selection '3' to lock state on the tax wizard period options selection prompt layout menu
     if (cleanInput === '3') {
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber,
-            `🏛️ *3. STATUTORY TAX LEGER REPORT* \n\n` +
-            `To output compliance auditing spreadsheets under SARS regime parameters, calculate tax window frames inside your console dashboard panel.\n\n` +
-            `💡 *Usage Note*: Detailed multi-period ledgers are compiled securely via standard web dash interfaces.`
-        );
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({ current_whatsapp_state: 'AWAITING_TAX_PERIOD', pending_whatsapp_payload: {} })
+            .eq('id', tokenRecord.id);
+
+        const taxOptionsPrompt =
+            `🏛️ *3. STATUTORY TAX REPORT PERIODS* 🏛️\n\n` +
+            `Select a window frame by replying with an option number:\n\n` +
+            `*1* — One month\n` +
+            `*2* — Three Months\n` +
+            `*3* — Six Months\n` +
+            `*4* — 12 Months\n` +
+            `*5* — Current Tax Year\n` +
+            `*6* — Previous Tax Year\n\n` +
+            `💡 _Or reply with 'menu' to return to system controls._`;
+
+        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, taxOptionsPrompt);
         return;
     }
 
@@ -95,7 +99,7 @@ export async function displayWhatsappMainMenu({
             const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: userProfile.id, userEmail: userProfile.email || subscriptionRecord?.user_email || '', callbackUrl: `${hostUrl}` })
+                body: JSON.stringify({ userId: userProfile.id, userEmail: userProfile.email || '', callbackUrl: `${hostUrl}` })
             });
             const result = await apiRes.json();
             if (result.success && result.url) {
