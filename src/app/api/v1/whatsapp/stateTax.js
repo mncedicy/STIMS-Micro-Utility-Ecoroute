@@ -9,18 +9,25 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
     }
 
     if (currentState === 'AWAITING_TAX_REPORT_ACTION') {
-        if (lowerMessage.trim() === '1') {
+        const choice = lowerMessage.trim();
+        console.log(`🔍 [stateTax Trace] Checking choice selection. Received value: "${choice}"`);
+
+        if (choice === '1') {
             const payload = pendingPayload || tokenRecord?.pending_whatsapp_payload || {};
             const startDate = payload.startDate;
             const endDate = payload.endDate;
             const targetEmail = userProfile?.email || '';
 
-            // COMBINED DIAGNOSTIC LOGS
-            console.log("📡 Server Host Context URL :", incomingServerUrl, " | 👤 UserProfile Entity Meta :", userProfile, " | 📅 Extracted Start Date :", startDate, " | 📅 Extracted End Date :", endDate);
+            // RESTORED INDIVIDUAL EXPLICIT CONSOLE LOGS
+            console.log("📡 Server Host Context URL :", incomingServerUrl);
+            console.log("👤 UserProfile Entity Meta :", userProfile);
+            console.log("📅 Extracted Start Date    :", startDate);
+            console.log("📅 Extracted End Date      :", endDate);
 
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
             if (!targetEmail) {
+                console.warn("⚠️ [stateTax Warning] Aborting export. Target email address row cell is completely unassigned.");
                 await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Action Failed: No email address linked to your user profile table record row.");
                 return true;
             }
@@ -31,13 +38,18 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
                 const hostUrl = incomingServerUrl || 'https://stims.co.za';
                 let targetDownloadUrl = `${hostUrl}/api/export/pdf?userId=${userProfile.id}&exportType=bulk&startDate=${startDate}&endDate=${endDate}&filterId=all&bypassUsage=true`;
 
+                console.log(`🔗 [stateTax Outbound Call] Initializing system fetch request loop to: ${targetDownloadUrl}`);
+
                 const apiRes = await fetch(targetDownloadUrl, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+                console.log(`🏁 [stateTax API Outcome] Target route tracking listener closed out with code status: ${apiRes.status}`);
+
                 if (apiRes.ok) {
                     await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `✅ Success! Your signed SARS compliance PDF documentation report has been generated and transmitted smoothly.`);
                 } else {
-                    throw new Error(`Status: ${apiRes.status}`);
+                    throw new Error(`Status Code: ${apiRes.status}`);
                 }
             } catch (err) {
+                console.error(`🚨 [stateTax Core Crash] Exception caught inside microservice pipeline:`, err.message);
                 await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Export Timeout: Failed to process backend report trigger generation loop (${err.message.includes('404') ? '404' : 'Network Error'}).`);
             }
             return true;
@@ -48,6 +60,8 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
 
     if (currentState === 'AWAITING_TAX_PERIOD') {
         const choice = lowerMessage.trim();
+        console.log(`🔍 [stateTax Trace] Checking period assignment tag selection entry. Received value: "${choice}"`);
+
         if (!['1', '2', '3', '4', '5', '6'].includes(choice)) {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid option. Please reply with a number between 1 and 6 to extract your tax audit ledger report.");
             return true;
@@ -78,11 +92,15 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
 
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Querying secure statutory ledgers for period: ${label}...`);
 
+        console.log(`📡 [stateTax Database Run] Querying ecoroute_emissions_logs table between dates ${startIso} and ${endIso}...`);
         const { data: logs } = await supabaseAdmin.from('ecoroute_emissions_logs').select('carbon_kg').eq('user_id', userProfile.id).eq('print_status', 'included').gte('emission_date', startIso).lte('emission_date', endIso);
+
         const totalEntries = logs?.length || 0;
         const totalKg = (logs || []).reduce((sum, row) => sum + parseFloat(row.carbon_kg || 0), 0);
         const totalMt = totalKg / 1000;
         const taxableVolumeMt = totalMt * 0.40, accruedLiabilityZar = taxableVolumeMt * 190;
+
+        console.log(`✅ [stateTax Database Result] Records processed: ${totalEntries} entries | Yielded mass weight volume: ${totalMt.toFixed(4)} MT`);
 
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_TAX_REPORT_ACTION', pending_whatsapp_payload: { startDate: startIso, endDate: endIso } }).eq('id', tokenRecord.id);
 
