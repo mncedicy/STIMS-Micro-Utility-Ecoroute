@@ -6,7 +6,7 @@ import { sendMetaWhatsappMessage } from './metaClient';
  * Computes date ranges dynamically based on the current server year 
  * and queries the custom ecoroute compliance ledger table layout blocks.
  */
-export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState }) {
+export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState, incomingServerUrl }) {
 
     // Check escape hatches to main menu
     if (['menu', 'main menu', 'exit', 'cancel'].includes(lowerMessage.trim())) {
@@ -43,8 +43,9 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `📧 Preparing your document package... Dispatching secure audit trail spreadsheet down to: *${targetEmail}*`);
 
             try {
-                // Dynamically compile target endpoint parameters matrix context
-                const hostUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stims.co.za';
+                console.log(incomingServerUrl, userProfile, startDate, endDate);
+                // FIXED: Use the verified server-hydrated incomingServerUrl parameter to prevent cross-domain 404 routing errors
+                const hostUrl = incomingServerUrl || 'https://ecoroute.stims.co.za';
                 let targetDownloadUrl = `${hostUrl}/api/export/pdf?userId=${userProfile.id}`;
                 targetDownloadUrl += `&exportType=bulk&startDate=${startDate}&endDate=${endDate}&filterId=all`;
 
@@ -146,7 +147,7 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
         const taxableVolumeMt = totalMt * 0.40;
         const accruedLiabilityZar = taxableVolumeMt * 190;
 
-        // FIXED: Shift conversation checkpoint flag forward into dynamic actions menu mode context pool
+        // Shift conversation checkpoint flag forward into dynamic actions menu mode context pool
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({
@@ -156,7 +157,7 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
             .eq('id', tokenRecord.id);
 
         const taxSummaryCard =
-            `🏛 *SARS CARBON TAX AUDIT REPORT* 🏛\n\n` +
+            `🏛️ *SARS CARBON TAX AUDIT REPORT* 🏛️\n\n` +
             `• *Period:* ${label}\n` +
             `• *Window Start:* ${startIso}\n` +
             `• *Window End:* ${endIso}\n\n` +
