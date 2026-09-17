@@ -6,6 +6,7 @@ import { handleShippingWorkflow } from './stateShipping';
 import { handleFlightWorkflow } from './stateFlight';
 import { handleElectricityWorkflow } from './stateElectricity';
 import { handleGasWorkflow } from './stateGas';
+import { handleRouteWorkflow } from './stateRoute'; // Mounted newly isolated route module
 
 export async function processConversationState({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes }) {
     const currentState = tokenRecord?.current_whatsapp_state || null;
@@ -13,72 +14,44 @@ export async function processConversationState({ lowerMessage, userProfile, toke
 
     const sharedContext = { lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload };
 
-    // 1. Process active running multi-step wizard step lines if applicable
+    // Evaluates multi-step input prompt checks across active pipelines
     if (currentState?.startsWith('AWAITING_VEHICLE') && await handleVehicleWorkflow(sharedContext)) return true;
     if (currentState?.startsWith('AWAITING_SHIPPING') && await handleShippingWorkflow(sharedContext)) return true;
     if (currentState?.startsWith('AWAITING_FLIGHT') && await handleFlightWorkflow(sharedContext)) return true;
     if (currentState?.startsWith('AWAITING_POWER') && await handleElectricityWorkflow(sharedContext)) return true;
     if (currentState?.startsWith('AWAITING_GAS') && await handleGasWorkflow(sharedContext)) return true;
 
+    // FIXED: Evaluate state lifecycle matching targets for active route checker queries
+    if (currentState?.startsWith('AWAITING_ROUTE') && await handleRouteWorkflow(sharedContext)) return true;
+
     // =========================================================================
-    // BRANCH B: SUB-MENU SELECTION GATES (Trigger ONLY if explicitly inside sub-menu context)
+    // SUB-MENU SELECTION SECTOR GATES (Triggers inside calculator sub-menu context)
     // =========================================================================
     if (currentState === 'INSIDE_CALCULATOR_SUBMENU') {
         if (lowerMessage === '1') {
-            await supabaseAdmin
-                .from('ecoroute_corporate_api_tokens')
-                .update({ current_whatsapp_state: 'AWAITING_VEHICLE_DISTANCE', pending_whatsapp_payload: {} })
-                .eq('id', tokenRecord.id);
-
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *VEHICLE AUDIT SETUP* \n\nPlease type the total trip travel path: \n\n*DISTANCE (KM)*");
+            await handleVehicleWorkflow({ ...sharedContext, lowerMessage: '1' });
             return true;
         }
-
         if (lowerMessage === '2') {
-            await supabaseAdmin
-                .from('ecoroute_corporate_api_tokens')
-                .update({ current_whatsapp_state: 'AWAITING_SHIPPING_WEIGHT', pending_whatsapp_payload: {} })
-                .eq('id', tokenRecord.id);
-
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
+            await handleShippingWorkflow({ ...sharedContext, lowerMessage: '2' });
             return true;
         }
-
         if (lowerMessage === '3') {
-            await supabaseAdmin
-                .from('ecoroute_corporate_api_tokens')
-                .update({ current_whatsapp_state: 'AWAITING_FLIGHT_PASSENGERS', pending_whatsapp_payload: {} })
-                .eq('id', tokenRecord.id);
-
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *FLIGHT AUDIT SETUP* \n\nPlease type the total traveler volume tally count:\n\n*PASSENGERS COUNT*");
+            const { handleFlightWorkflow } = await import('./stateFlight');
+            await handleFlightWorkflow({ ...sharedContext, lowerMessage: '3' });
             return true;
         }
-
         if (lowerMessage === '4') {
-            await supabaseAdmin
-                .from('ecoroute_corporate_api_tokens')
-                .update({ current_whatsapp_state: 'AWAITING_POWER_KWH', pending_whatsapp_payload: {} })
-                .eq('id', tokenRecord.id);
-
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *ELECTRICITY AUDIT SETUP* \n\nPlease input total energy utilization:\n\n*METRICS VOLUME (KWH)*");
+            const { handleElectricityWorkflow } = await import('./stateElectricity');
+            await handleElectricityWorkflow({ ...sharedContext, lowerMessage: '4' });
             return true;
         }
-
         if (lowerMessage === '5') {
-            await supabaseAdmin
-                .from('ecoroute_corporate_api_tokens')
-                .update({ current_whatsapp_state: 'AWAITING_GAS_QTY', pending_whatsapp_payload: {} })
-                .eq('id', tokenRecord.id);
-
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *GAS COMBUSTION SETUP* \n\nPlease enter the total fuel volume burned:\n\n*QUANTITY CAPACITY AMOUNT*");
+            await handleGasWorkflow({ ...sharedContext, lowerMessage: '5' });
             return true;
         }
 
-        // If any unmapped character is sent, clear the sub-menu checkpoint state flag
-        await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: null })
-            .eq('id', tokenRecord.id);
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
     }
 
     return false;

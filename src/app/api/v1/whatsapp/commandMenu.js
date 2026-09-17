@@ -11,20 +11,17 @@ export async function displayWhatsappMainMenu({
     businessPhoneNumberId,
     cleanPhoneNumber,
     incomingServerUrl,
-    supabaseAdmin // Accept the admin client natively to update sub-menu milestones
+    subscriptionRecord,
+    supabaseAdmin
 }) {
     const cleanInput = String(incomingMessage || '').trim().toLowerCase();
-    const currentSubStatus = String(tokenRecord?.status || 'free').toLowerCase();
+    const currentSubStatus = String(subscriptionRecord?.status || 'free').toLowerCase();
     const isFreeTier = currentSubStatus !== 'active';
     const firstName = userProfile?.first_name || 'Partner';
     const companyName = userProfile?.company ? ` (${userProfile.company})` : '';
     const availableZar = availableBalanceCents / 100;
 
-    // =========================================================================
-    // INTERCEPT TOP-LEVEL SYSTEM MENU OPTIONS (Only if not inside a sub-menu state)
-    // =========================================================================
     if (cleanInput === '1') {
-        // FIXED: Commit state flag parameter immediately to isolate the active conversational window context
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', updated_at: new Date().toISOString() })
@@ -41,13 +38,17 @@ export async function displayWhatsappMainMenu({
         return;
     }
 
+    // FIXED: Intercept Option 2 selection input to switch state flag immediately, triggering dynamic trace wizard prompts
     if (cleanInput === '2') {
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({ current_whatsapp_state: 'AWAITING_ROUTE_DISTANCE', pending_whatsapp_payload: {} })
+            .eq('id', tokenRecord.id);
+
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber,
-            `🗺️ *2. ROUTE CHECKER RUNS* \n\n` +
-            `To track a terrestrial matrix array trace path, use the dashboard tracker panel or pass parameters via API integrations.\n\n` +
-            `💡 *Command Format Examples*:\n` +
-            `• _vehicle 45km [vehicle_id]_\n` +
-            `• _vehicle 120miles [vehicle_id]_`
+            `🗺️ *2. ROUTE CHECKER WIZARD RUN* \n\n` +
+            `Please type the terrestrial distance path length to verify tracking optimizations:\n\n` +
+            `*ROUTE TOTAL DISTANCE (KM)*`
         );
         return;
     }
@@ -76,7 +77,7 @@ export async function displayWhatsappMainMenu({
         let text = `🚛 *5. REGISTERED FLEET ASSET NODES* \n\n`;
         if (customVehicles.length > 0) {
             customVehicles.forEach((veh) => {
-                const reg = (veh.registration_number || veh.registration || 'FLEET').toUpperCase();
+                const reg = String(veh.registration_number || 'FLEET').toUpperCase();
                 const make = (veh.make || 'ASSET').toUpperCase();
                 text += `• ${reg} - ${make}\n`;
             });
@@ -94,7 +95,7 @@ export async function displayWhatsappMainMenu({
             const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: userProfile.id, userEmail: userProfile.email || '', callbackUrl: `${hostUrl}` })
+                body: JSON.stringify({ userId: userProfile.id, userEmail: userProfile.email || subscriptionRecord?.user_email || '', callbackUrl: `${hostUrl}` })
             });
             const result = await apiRes.json();
             if (result.success && result.url) {
