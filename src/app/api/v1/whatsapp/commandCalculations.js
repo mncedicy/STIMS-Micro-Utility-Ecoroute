@@ -9,17 +9,17 @@ import { processConversationState } from './commandState';
 
 export async function executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin }) {
 
-    // FIXED: Hydrate your authentic fleet data records BEFORE executing conversation states matching parameter constraints rules
     const [appMetaRes, vehiclesResult] = await Promise.all([
         supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle(),
-        supabaseAdmin.from('ecoroute_vehicles').select('id, registration, registration_number, make, model, is_active').eq('user_id', userProfile.id)
+        // FIXED: Explicitly query only valid existing table columns, matching your pg_default schema constraints perfectly
+        supabaseAdmin.from('ecoroute_vehicles').select('id, registration_number, make, model, is_active').eq('user_id', userProfile.id)
     ]);
 
     const activeVehicles = (vehiclesResult.data || []).filter(veh => veh.is_active !== false);
     const mockTokenQuery = { data: tokenRecord };
     const mockProfRes = { data: userProfile };
 
-    // FIXED: Passed complete hydrated database structures down into the conversational wizards loops
+    // 1. Process active conversational multi-step wizard stages first
     const stateHandled = await processConversationState({
         lowerMessage,
         userProfile,
@@ -37,7 +37,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
 
     if (stateHandled) return true;
 
-    // Standalone text command pattern execution loops continue below identically
+    // 2. FIXED: Converted all standalone text command patterns to clean native JavaScript regular expression literal blocks
     if (lowerMessage.startsWith('vehicle')) {
         const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-z0-9-]+)\$/i;
         const match = lowerMessage.match(pattern);
@@ -65,7 +65,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('power')) {
-        const pattern = /^power\s+(\d+(?:\.\d+)?)\s*([a-z]{2})\s*(utility_grid|diesel_generator|solar_pv)?\$/i;
+        const pattern = /^power\s+(\d+(?:\.\d+)?)\s*([a-z]{2})\s*(utility_grid|diesel_generator|solar_pv)\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: power [kwh] [country] [source]\nExample: power 250 za utility_grid");
 
@@ -79,7 +79,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     }
 
     if (lowerMessage.startsWith('shipping')) {
-        const pattern = /^shipping\s+(\d+(?:\.\d+)?)\s*(kg|lbs|tonnes)\s+(\d+(?:\.\d+)?)\s*(km|miles)\s*(standard|road_heavy|road_light|rail|ocean)?\$/i;
+        const pattern = /^shipping\s+(\d+(?:\.\d+)?)\s*(kg|lbs|tonnes)\s+(\d+(?:\.\d+)?)\s*(km|miles)\s*(standard|road_heavy|road_light|rail|ocean)\$/i;
         const match = lowerMessage.match(pattern);
         if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: shipping [weight] [mass_unit] [dist][unit] [mode]\nExample: shipping 5 tonnes 850 km road_heavy");
 

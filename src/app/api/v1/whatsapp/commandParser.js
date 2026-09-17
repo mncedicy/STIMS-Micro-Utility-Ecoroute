@@ -27,19 +27,18 @@ export async function handleIncomingCommand({
         return;
     }
 
-    // FIXED: Capture the outcome of the calculation state process loop cleanly 
     const wasStateHandled = await executeEmissionsCalculations({
         lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin
     });
 
-    // FIXED: If the conversational sub-menu or wizard intercept caught the message, abort out to prevent menu redraws
     if (wasStateHandled === true) {
         return;
     }
 
+    // FIXED: Dropped the invalid non-existent 'registration' column name from the query parameters selection matrix safely
     const [ledgerQuery, vehiclesQuery, subQuery] = await Promise.all([
         supabaseAdmin.from('referral_payouts_ledger').select('amount_cents, payout_status').eq('referrer_id', userProfile.id),
-        supabaseAdmin.from('ecoroute_vehicles').select('registration, registration_number, make, model').eq('user_id', userProfile.id).eq('is_active', true),
+        supabaseAdmin.from('ecoroute_vehicles').select('id, registration_number, make, model, is_active').eq('user_id', userProfile.id),
         supabaseAdmin.from('user_subscriptions').select('tier, status, user_email').eq('user_id', userProfile.id).eq('app_id', 'ecoroute').maybeSingle()
     ]);
 
@@ -47,12 +46,14 @@ export async function handleIncomingCommand({
         .filter(row => row.payout_status === 'unpaid')
         .reduce((sum, row) => sum + row.amount_cents, 0);
 
+    const activeVehiclesList = (vehiclesQuery.data || []).filter(veh => veh.is_active !== false);
+
     await displayWhatsappMainMenu({
         incomingMessage,
         userProfile,
         tokenRecord,
         availableBalanceCents,
-        customVehicles: vehiclesQuery.data || [],
+        customVehicles: activeVehiclesList,
         businessPhoneNumberId,
         cleanPhoneNumber,
         incomingServerUrl,
