@@ -20,9 +20,7 @@ export async function GET(req) {
             return new Response('Internal Configuration Error', { status: 500 });
         }
 
-        const isTokenValid = token === envToken;
-
-        if (mode === 'subscribe' && isTokenValid) {
+        if (mode === 'subscribe' && token === envToken) {
             return new Response(String(challenge), {
                 status: 200,
                 headers: {
@@ -69,41 +67,42 @@ export async function POST(req) {
         const cleanPhoneNumber = String(messageNode.from || '').trim();
         const businessPhoneNumberId = metadataNode.phone_number_id || "1307900412406936";
 
-        if (messageNode.type !== 'text') {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: Plain text commands only.");
+        // FIXED: Re-mapped the input parser variable to support native Meta touch-button component replies
+        let incomingMessage = '';
+        const messageType = messageNode.type;
+
+        if (messageType === 'text') {
+            incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
+        } else if (messageType === 'interactive') {
+            const interactiveType = messageNode.interactive?.type;
+            if (interactiveType === 'button_reply') {
+                // Captures unique button element ID (e.g. 'menu_option_1')
+                incomingMessage = String(messageNode.interactive?.button_reply?.id || '').trim().toLowerCase();
+            } else if (interactiveType === 'list_reply') {
+                // Captures unique list selection row item ID (e.g. 'menu_option_2')
+                incomingMessage = String(messageNode.interactive?.list_reply?.id || '').trim().toLowerCase();
+            }
+        } else {
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: Plain text or interactive component button selections only.");
             return NextResponse.json({ success: true }, { status: 200 });
         }
-
-        const incomingMessage = (messageNode.text?.body || '').trim().toLowerCase();
 
         const numericOnly = cleanPhoneNumber.replace(/\D/g, '');
         const lastDigits = numericOnly.length >= 9 ? numericOnly.slice(-9) : numericOnly;
 
-        console.log(`🔍 [Lookup Request] Mobile: ${cleanPhoneNumber} | Searching Pattern: %${lastDigits}%`);
-
-        // FIXED: Added 'email' cleanly back into the select tracking string array parameters matrix
         const { data: userProfiles, error: profileError } = await supabaseAdmin
             .from('profiles')
             .select('id, first_name, surname, company, email, phone_number')
             .ilike('phone_number', `%${lastDigits}%`);
 
-        if (profileError) {
-            console.error('🚨 Supabase DB Query Error:', profileError.message);
-        }
+        if (profileError) console.error('🚨 Supabase DB Query Error:', profileError.message);
 
         const userProfile = userProfiles?.[0];
 
         if (!userProfile) {
-            console.warn(`⚠️ Match failed for phone number ending in: ${lastDigits}`);
-            await sendMetaWhatsappMessage(
-                businessPhoneNumberId,
-                cleanPhoneNumber,
-                "EcoRoute Guard: Your mobile number is not registered. Please link this number in your settings."
-            );
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "EcoRoute Guard: Your mobile number is not registered. Please link this number in your settings.");
             return NextResponse.json({ success: true }, { status: 200 });
         }
-
-        console.log(`✅ [Profile Matched]: User ID = ${userProfile.id}, Name = ${userProfile.first_name}`);
 
         const { data: tokenRecord } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')

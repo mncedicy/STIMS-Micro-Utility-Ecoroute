@@ -37,3 +37,45 @@ export async function sendMetaWhatsappMessage(phoneId, recipientMobile, messageS
         console.error('🚨 [Meta Graph HTTP Post Fail]:', fetchNetworkError.message);
     }
 }
+
+/**
+ * FIXED: Added native Meta Interactive Component dispatcher to support UI components (List Menus and Quick Reply Buttons)
+ * Reuses your identical testing credentials, cloud variables, and the correct v22.0 API gateway layout.
+ */
+export async function sendMetaInteractiveMessage(phoneId, recipientMobile, interactivePayload) {
+    // HARDCODED ACCESS TOKEN FOR TESTING
+    const metaCloudAccessToken = "EAAXr1581WfABSaO3kXMx8tq4B4pymZCeogPpfhiB8fEyjovWSZCLA0xSBuXEl3nndshAFQ6EIMiKZAYWfg5Xf9dJ7x2RtUyEo0JTlCZBa07CFv3ztJoTrjs3RpHNHj4bKtfQyeWRycZBA9fe8WyhFt5iCfQv0Gri9SBJ2dBJzJqOqL4osEXIMZCJDLIZCAicAZDZD";
+    const activePhoneId = phoneId || "1307900412406936";
+    const graphApiVersionUrl = `https://graph.facebook.com/v22.0/${activePhoneId}/messages`;
+
+    if (!metaCloudAccessToken || !activePhoneId) {
+        console.error(`⚠️ [Meta Interactive Client Fault]: Missing access token or phoneId. phoneId=${activePhoneId}, tokenExists=${!!metaCloudAccessToken}`);
+        return;
+    }
+
+    try {
+        const response = await fetch(graphApiVersionUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${metaCloudAccessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: recipientMobile,
+                type: 'interactive',
+                interactive: interactivePayload
+            })
+        });
+
+        const resData = await response.json();
+        if (!response.ok) {
+            console.error('🚨 [Meta Graph Interactive API Error]:', JSON.stringify(resData));
+        } else {
+            console.log('✅ [WhatsApp Interactive Reply Sent]:', resData);
+        }
+    } catch (fetchNetworkError) {
+        console.error('🚨 [Meta Graph Interactive HTTP Post Fail]:', fetchNetworkError.message);
+    }
+}
