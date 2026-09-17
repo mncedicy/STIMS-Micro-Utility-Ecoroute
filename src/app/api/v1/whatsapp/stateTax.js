@@ -6,7 +6,7 @@ import { sendMetaWhatsappMessage } from './metaClient';
  * Computes date ranges dynamically based on the current server year 
  * and queries the custom ecoroute compliance ledger table layout blocks.
  */
-export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState, incomingServerUrl }) {
+export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState, incomingServerUrl, pendingPayload }) {
 
     // Check escape hatches to main menu
     if (['menu', 'main menu', 'exit', 'cancel'].includes(lowerMessage.trim())) {
@@ -24,10 +24,13 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
         const choice = lowerMessage.trim();
 
         if (choice === '1') {
-            const payload = tokenRecord?.pending_whatsapp_payload || {};
+            const payload = pendingPayload || tokenRecord?.pending_whatsapp_payload || {};
             const startDate = payload.startDate;
             const endDate = payload.endDate;
             const targetEmail = userProfile?.email || '';
+
+            // Print explicit logging trace blocks matching your debug requirements exactly
+            console.log("📡 [Tax Action Debug Log] Server Host Context:", incomingServerUrl, "UserProfile:", userProfile, "Start Range:", startDate, "End Range:", endDate);
 
             // Reset conversation states cleanly right before executing network fetch routines
             await supabaseAdmin
@@ -43,13 +46,13 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `📧 Preparing your document package... Dispatching secure audit trail spreadsheet down to: *${targetEmail}*`);
 
             try {
-                console.log(incomingServerUrl, userProfile, startDate, endDate);
-                // FIXED: Use the verified server-hydrated incomingServerUrl parameter to prevent cross-domain 404 routing errors
-                const hostUrl = incomingServerUrl || 'https://ecoroute.stims.co.za';
+                // FIXED: Dynamically map base URLs cleanly using the destructured incomingServerUrl context parameter
+                const hostUrl = incomingServerUrl || 'https://stims.co.za';
                 let targetDownloadUrl = `${hostUrl}/api/export/pdf?userId=${userProfile.id}`;
                 targetDownloadUrl += `&exportType=bulk&startDate=${startDate}&endDate=${endDate}&filterId=all`;
 
-                // Fire microservice fetch trigger request safely down internal gateway pipeline layers
+                console.log(`🔗 [Tax Export Fetch Trigger] Target API Link URL: ${targetDownloadUrl}`);
+
                 const apiRes = await fetch(targetDownloadUrl, {
                     method: 'GET',
                     headers: { 'Content-Type': 'application/json' }

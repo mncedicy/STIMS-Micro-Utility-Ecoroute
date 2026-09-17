@@ -65,8 +65,9 @@ export async function processConversationState({ lowerMessage, userProfile, toke
             await handleShippingWorkflow({ ...sharedContext, lowerMessage: '2' });
             return true;
         }
+        // FIXED: Explicitly wired option 3 check inside the calculator sub-menu to forward to the tax report wizard setup card smoothly
         if (lowerMessage === '3') {
-            await handleFlightWorkflow({ ...sharedContext, lowerMessage: '3' });
+            await handleTaxWorkflow({ ...sharedContext, currentState: 'AWAITING_TAX_PERIOD' });
             return true;
         }
         if (lowerMessage === '4') {
