@@ -1,13 +1,17 @@
 // src/app/api/v1/whatsapp/stateTax.js
 
 import { sendMetaWhatsappMessage } from './metaClient';
+import { emailPdfReport } from '@/app/actions/email'; // FIXED: Importing your native Server Action directly
 
-export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState, incomingServerUrl, pendingPayload }) {
+export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState, pendingPayload }) {
     if (['menu', 'main menu', 'exit', 'cancel'].includes(lowerMessage.trim().toLowerCase())) {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         return false;
     }
 
+    // =========================================================================
+    // STEP 2: PARSE SECONDARY CHOICE USER SELECTION INPUT (EMAIL EXPORT ACTION)
+    // =========================================================================
     if (currentState === 'AWAITING_TAX_REPORT_ACTION') {
         const choice = lowerMessage.trim();
         console.log(`🔍 [stateTax Trace] Checking choice selection. Received value: "${choice}"`);
@@ -18,8 +22,8 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
             const endDate = payload.endDate;
             const targetEmail = userProfile?.email || '';
 
-            // RESTORED INDIVIDUAL EXPLICIT CONSOLE LOGS
-            console.log("📡 Server Host Context URL :", incomingServerUrl);
+            // Explicit console logging trace block matching your exact output requirements
+            console.log("📡 Server Host Context URL : NATIVE_SERVER_ACTION");
             console.log("👤 UserProfile Entity Meta :", userProfile);
             console.log("📅 Extracted Start Date    :", startDate);
             console.log("📅 Extracted End Date      :", endDate);
@@ -27,7 +31,7 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
             if (!targetEmail) {
-                console.warn("⚠️ [stateTax Warning] Aborting export. Target email address row cell is completely unassigned.");
+                console.warn("⚠️ [stateTax Warning] Aborting export. Target email address is completely unassigned.");
                 await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Action Failed: No email address linked to your user profile table record row.");
                 return true;
             }
@@ -35,22 +39,32 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `📧 Preparing your document package... Dispatching secure audit trail spreadsheet down to: *${targetEmail}*`);
 
             try {
-                const hostUrl = incomingServerUrl || 'https://stims.co.za';
-                let targetDownloadUrl = `${hostUrl}/api/export/pdf?userId=${userProfile.id}&exportType=bulk&startDate=${startDate}&endDate=${endDate}&filterId=all&bypassUsage=true`;
+                // FIXED: Mirrored the payload envelope requirements from ExportModal.js exactly to guarantee schema consistency
+                const payloadEnvelope = {
+                    startDate: startDate,
+                    endDate: endDate,
+                    filterId: "all",
+                    userId: userProfile.id
+                };
 
-                console.log(`🔗 [stateTax Outbound Call] Initializing system fetch request loop to: ${targetDownloadUrl}`);
+                console.log(`🔗 [stateTax Server Action] Invoking emailPdfReport natively with envelope:`, payloadEnvelope);
 
-                const apiRes = await fetch(targetDownloadUrl, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
-                console.log(`🏁 [stateTax API Outcome] Target route tracking listener closed out with code status: ${apiRes.status}`);
+                // FIXED: Executing the native server action directly instead of firing a relative/absolute fetch URL
+                const result = await emailPdfReport(
+                    targetEmail,
+                    'BATCH_INDEX_SET_WHATSAPP', // Emulates a batch manifest ID set context to match modal expectations
+                    'all',                     // Broad categories display context
+                    payloadEnvelope
+                );
 
-                if (apiRes.ok) {
+                if (result && result.success) {
                     await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `✅ Success! Your signed SARS compliance PDF documentation report has been generated and transmitted smoothly.`);
                 } else {
-                    throw new Error(`Status Code: ${apiRes.status}`);
+                    throw new Error(result?.error || 'Email distribution rejected by server agent.');
                 }
             } catch (err) {
-                console.error(`🚨 [stateTax Core Crash] Exception caught inside microservice pipeline:`, err.message);
-                await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Export Timeout: Failed to process backend report trigger generation loop (${err.message.includes('404') ? '404' : 'Network Error'}).`);
+                console.error(`🚨 [stateTax Core Crash] Exception caught inside server action pipeline:`, err.message);
+                await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Export Timeout: Failed to process backend report trigger generation loop (${err.message}).`);
             }
             return true;
         }
@@ -58,6 +72,9 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
         return false;
     }
 
+    // =========================================================================
+    // STEP 1: INITIAL COMPLIANCE WINDOW TIME-FRAME SELECTION INPUT NODES
+    // =========================================================================
     if (currentState === 'AWAITING_TAX_PERIOD') {
         const choice = lowerMessage.trim();
         console.log(`🔍 [stateTax Trace] Checking period assignment tag selection entry. Received value: "${choice}"`);
