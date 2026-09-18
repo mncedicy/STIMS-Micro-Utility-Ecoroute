@@ -7,6 +7,16 @@ import { sendMetaWhatsappMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
 export async function handleFlightWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
+
+    // Global escape hatches to main menu control panel layer
+    if (['menu', 'main menu', 'exit', 'cancel'].includes(lowerMessage.trim().toLowerCase())) {
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
+        return false;
+    }
+
+    // =========================================================================
+    // STEP 3: USER SUPPLIED DESTINATION AIRPORT TERMINAL STRING (IATA)
+    // =========================================================================
     if (currentState === 'AWAITING_FLIGHT_DEST') {
         const destIata = lowerMessage.trim().toUpperCase();
         if (destIata.length !== 3) {
@@ -39,6 +49,9 @@ export async function handleFlightWorkflow({ lowerMessage, userProfile, tokenRec
         return true;
     }
 
+    // =========================================================================
+    // STEP 2: USER SUPPLIED DEPARTURE AIRPORT TERMINAL STRING (IATA)
+    // =========================================================================
     if (currentState === 'AWAITING_FLIGHT_ORIGIN') {
         const originIata = lowerMessage.trim().toUpperCase();
         if (originIata.length !== 3) {
@@ -55,6 +68,9 @@ export async function handleFlightWorkflow({ lowerMessage, userProfile, tokenRec
         return true;
     }
 
+    // =========================================================================
+    // STEP 1: USER SUPPLIED PASSENGER TALLY COUNT VALUE
+    // =========================================================================
     if (currentState === 'AWAITING_FLIGHT_PASSENGERS') {
         const numericPax = parseInt(lowerMessage, 10);
         if (isNaN(numericPax) || numericPax <= 0) {
@@ -71,8 +87,15 @@ export async function handleFlightWorkflow({ lowerMessage, userProfile, tokenRec
         return true;
     }
 
-    if (lowerMessage === '3') {
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_FLIGHT_PASSENGERS' }).eq('id', tokenRecord.id);
+    // =========================================================================
+    // FIXED: INTERCEPT BOTH INTERACTIVE SELECTION BUTTONS AND MANUAL MACRO CHECKS
+    // =========================================================================
+    if (lowerMessage === 'calc_opt_3' || lowerMessage === '3' || currentState === 'LAUNCH_FLIGHT_WIZARD_PROMPT') {
+        await supabaseAdmin
+            .from('ecoroute_corporate_api_tokens')
+            .update({ current_whatsapp_state: 'AWAITING_FLIGHT_PASSENGERS', pending_whatsapp_payload: {} })
+            .eq('id', tokenRecord.id);
+
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *FLIGHT AUDIT SETUP* \n\nPlease type the total traveler volume tally count:\n\n*PASSENGERS COUNT*");
         return true;
     }
