@@ -8,6 +8,8 @@ import { buildAuditCardString } from './messageTemplates';
 
 export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
 
+    const normalizedInputToken = String(lowerMessage || '').trim().toLowerCase();
+
     // STEP 3: USER SELECTED THE VEHICLE ROW ID
     if (currentState === 'AWAITING_VEHICLE_SELECTION') {
         const choice = lowerMessage.trim();
@@ -95,7 +97,8 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
     }
 
     // STEP 1: CALCULATOR SUB-MENU SELECTION GRID INITIALIZATION
-    if (lowerMessage === 'launch_calculator_list_menu') {
+    // FIXED: Enforced strict lowercase matching properties verification loop to capture launcher triggers perfectly
+    if (normalizedInputToken === 'launch_calculator_list_menu') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
         const nativeCalcList = {
@@ -119,11 +122,9 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             }
         };
 
-        // FIXED: Corrected destination recipient from businessPhoneNumberId back to cleanPhoneNumber
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeCalcList);
         return true;
     }
-
 
     return false;
 }
