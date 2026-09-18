@@ -68,5 +68,6 @@ export async function processConversationState({ lowerMessage, userProfile, toke
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
     }
 
+
     return false;
 }

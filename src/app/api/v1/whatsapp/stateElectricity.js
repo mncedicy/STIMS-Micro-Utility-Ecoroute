@@ -3,7 +3,6 @@
 import { processCategoryEmissions } from '@/app/api/estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { runEmissionsPipeline } from '@/app/api/estimates/pipelineService';
-// FIXED: Added the complete native client messaging and interactive UI components import decorators cleanly
 import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
@@ -16,7 +15,7 @@ export async function handleElectricityWorkflow({ lowerMessage, userProfile, tok
     }
 
     // =========================================================================
-    // STEP 3: USER SELECTED POWER SOURCE MIX NETWORK TYPE (UTILITY GRID ETC.)
+    // STEP 2: USER SELECTED POWER SOURCE MIX (UTILITY GRID, DIESEL, SOLAR)
     // =========================================================================
     if (currentState === 'AWAITING_POWER_SOURCE') {
         const choice = lowerMessage.trim().toLowerCase();
@@ -25,7 +24,6 @@ export async function handleElectricityWorkflow({ lowerMessage, userProfile, tok
             "pwr_src_1": "utility_grid",
             "pwr_src_2": "diesel_generator",
             "pwr_src_3": "solar_pv",
-            // Backward compatibility
             "1": "utility_grid", "2": "diesel_generator", "3": "solar_pv"
         };
 
@@ -36,7 +34,7 @@ export async function handleElectricityWorkflow({ lowerMessage, userProfile, tok
         }
 
         const finalKwh = pendingPayload?.kwh;
-        const finalCountry = pendingPayload?.country_code;
+        const finalCountry = pendingPayload?.country_code || 'ZA'; // Secure fallback matching your schema context
 
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⚙️ Computing Scope 2 electricity grid metrics conversion run...`);
@@ -51,24 +49,30 @@ export async function handleElectricityWorkflow({ lowerMessage, userProfile, tok
     }
 
     // =========================================================================
-    // STEP 2: USER SUPPLIED COUNTRY ISO REGINATION CODE (e.g. ZA)
+    // STEP 1: USER SUPPLIED POWER CONSUMPTION QUANTITY VOLUME (KWH)
     // =========================================================================
-    if (currentState === 'AWAITING_POWER_COUNTRY') {
-        const countryIso = lowerMessage.trim().toUpperCase();
-        if (countryIso.length !== 2) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid region identifier. Please provide a standard 2-letter country ISO code (e.g. ZA or US):");
+    if (currentState === 'AWAITING_POWER_KWH') {
+        const numericKwh = parseFloat(lowerMessage);
+        if (isNaN(numericKwh) || numericKwh <= 0) {
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid value. Please type a positive numeric energy volume consumption amount in kWh:");
             return true;
         }
 
+        // FIXED: Automate country resolution by fetching country_code directly from your profiles table row columns
+        const resolvedCountryCode = String(userProfile?.country_code || 'ZA').trim().toUpperCase();
+        console.log(`📡 [stateElectricity Autopilot] Resolved Country Code from Profile Table: "${resolvedCountryCode}" for User: ${userProfile.first_name}`);
+
+        // Skip the text prompt completely and save straight into AWAITING_POWER_SOURCE state with payload attached
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
             current_whatsapp_state: 'AWAITING_POWER_SOURCE',
-            pending_whatsapp_payload: { ...pendingPayload, country_code: countryIso }
+            pending_whatsapp_payload: { kwh: numericKwh, country_code: resolvedCountryCode }
         }).eq('id', tokenRecord.id);
 
+        // Dispatch the touch-responsive selection menu panel instantly over the wire
         const nativePowerListPayload = {
             type: "list",
             header: { type: "text", text: "⚡ SELECT POWER SOURCE ⚡" },
-            body: { text: "Choose an active generation source option parameter from the panel matrix row list down below to process calculations:" },
+            body: { text: `Processing ${numericKwh} kWh audit run for region code [${resolvedCountryCode}].\n\nChoose an active generation source option parameter from the panel matrix row list down below:` },
             action: {
                 button: "Select Source Mix",
                 sections: [
@@ -85,25 +89,6 @@ export async function handleElectricityWorkflow({ lowerMessage, userProfile, tok
         };
 
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativePowerListPayload);
-        return true;
-    }
-
-    // =========================================================================
-    // STEP 1: USER SUPPLIED POWER CONSUMPTION QUANTITY VOLUME (KWH)
-    // =========================================================================
-    if (currentState === 'AWAITING_POWER_KWH') {
-        const numericKwh = parseFloat(lowerMessage);
-        if (isNaN(numericKwh) || numericKwh <= 0) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid value. Please type a positive numeric energy volume consumption amount in kWh:");
-            return true;
-        }
-
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
-            current_whatsapp_state: 'AWAITING_POWER_COUNTRY',
-            pending_whatsapp_payload: { kwh: numericKwh }
-        }).eq('id', tokenRecord.id);
-
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *ELECTRICITY REGIONAL METRICS*\n\nPlease specify the 2-letter country location code:\n\n*COUNTRY ISO CODE (e.g. ZA)*");
         return true;
     }
 
