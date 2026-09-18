@@ -1,5 +1,7 @@
 // src/app/api/v1/whatsapp/commandState.js
 
+// FIXED: Added the explicit client messaging import reference to prevent runtime ReferenceErrors
+import { sendMetaWhatsappMessage } from './metaClient';
 import { handleVehicleWorkflow } from './stateVehicle';
 import { handleShippingWorkflow } from './stateShipping';
 import { handleFlightWorkflow } from './stateFlight';
@@ -8,6 +10,10 @@ import { handleGasWorkflow } from './stateGas';
 import { handleRouteWorkflow } from './stateRoute';
 import { handleTaxWorkflow } from './stateTax';
 
+/**
+ * Master State Router: Isolates and directs conversational traffic based on the active state string token.
+ * Forwards structural server URL context seamlessly to nested child handlers.
+ */
 export async function processConversationState({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, incomingServerUrl }) {
     const currentState = tokenRecord?.current_whatsapp_state || null;
     const pendingPayload = tokenRecord?.pending_whatsapp_payload || {};
@@ -43,7 +49,6 @@ export async function processConversationState({ lowerMessage, userProfile, toke
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
             return true;
         }
-        // FIXED: Explicitly wired option 3 to point directly to handleFlightWorkflow, ending the tax report duplication crash loop!
         if (cleanChoice === 'calc_opt_3' || cleanChoice === '3') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_FLIGHT_PASSENGERS', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await handleFlightWorkflow({ ...sharedContext, currentState: 'LAUNCH_FLIGHT_WIZARD_PROMPT' });
