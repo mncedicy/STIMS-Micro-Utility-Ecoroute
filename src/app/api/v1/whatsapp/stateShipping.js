@@ -3,14 +3,39 @@
 import { processCategoryEmissions } from '@/app/api/estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { runEmissionsPipeline } from '@/app/api/estimates/pipelineService';
-import { sendMetaWhatsappMessage } from './metaClient';
+import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
 export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
+
+    // Check escape hatches to main menu
+    if (['menu', 'main menu', 'exit', 'cancel'].includes(lowerMessage.trim().toLowerCase())) {
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
+        return false;
+    }
+
+    // =========================================================================
+    // STEP 3: USER SELECTED A NATIVE FREIGHT LOGISTICS MODE ROW
+    // =========================================================================
     if (currentState === 'AWAITING_SHIPPING_MODE') {
-        const choice = lowerMessage.trim();
-        const modesMap = { "1": "road_heavy", "2": "road_light", "3": "rail", "4": "ocean" };
-        const selectedMode = modesMap[choice] || 'standard';
+        const choice = lowerMessage.trim().toLowerCase();
+
+        // Map native interactive element button IDs onto standard parameters
+        const modesMap = {
+            "ship_mode_1": "road_heavy",
+            "ship_mode_2": "road_light",
+            "ship_mode_3": "rail",
+            "ship_mode_4": "ocean",
+            // Backward compatibility for legacy numeric responses
+            "1": "road_heavy", "2": "road_light", "3": "rail", "4": "ocean"
+        };
+
+        const selectedMode = modesMap[choice];
+
+        if (!selectedMode) {
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid selection. Please use the menu picker panel to choose an approved logistics mode.");
+            return true;
+        }
 
         const finalWeight = pendingPayload?.cargo_weight;
         const finalDistance = pendingPayload?.distance;
@@ -31,6 +56,9 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
         return true;
     }
 
+    // =========================================================================
+    // STEP 2: USER SUPPLIED TRAVEL PATH DISTANCE IN KM
+    // =========================================================================
     if (currentState === 'AWAITING_SHIPPING_DISTANCE') {
         const numericDistance = parseFloat(lowerMessage);
         if (isNaN(numericDistance) || numericDistance <= 0) {
@@ -38,23 +66,43 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
             return true;
         }
 
+        // Commit pending variables securely to table row state before sending list panel
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: 'AWAITING_SHIPPING_MODE', pending_whatsapp_payload: { ...pendingPayload, distance: numericDistance } })
+            .update({
+                current_whatsapp_state: 'AWAITING_SHIPPING_MODE',
+                pending_whatsapp_payload: { ...pendingPayload, distance: numericDistance }
+            })
             .eq('id', tokenRecord.id);
 
-        const modePrompt =
-            `📦 *SELECT FREIGHT LOGISTICS TRANSPORT MODE* 📦\n\n` +
-            `Reply with a single option key index to map calculations:\n\n` +
-            `*1* — Linehaul Truck (Road Heavy)\n` +
-            `*2* — Urban Delivery Van (Road Light)\n` +
-            `*3* — Transnet Freight Network (Rail)\n` +
-            `*4* — Deep Sea Cargo Vessel (Ocean)`;
+        // FIXED: Generated native Meta interactive list payload structure matching 24-character constraints rules perfectly
+        const nativeShippingListPayload = {
+            type: "list",
+            header: { type: "text", text: "📦 SELECT FREIGHT MODE 📦" },
+            body: { text: "Select a freight logistics transportation mode from the panel choice matrix below to complete auditing calculations:" },
+            action: {
+                button: "Choose Logistics Mode",
+                sections: [
+                    {
+                        title: "FREIGHT CARRIER MODES", // 21 characters (Safe under 24 maximum limit)
+                        rows: [
+                            { id: "ship_mode_1", title: "Linehaul Truck", description: "Long-distance freight (Road Heavy)" },
+                            { id: "ship_mode_2", title: "Urban Delivery Van", description: "Last-mile courier logistics (Road Light)" },
+                            { id: "ship_mode_3", title: "Transnet Freight", description: "Rail distribution network system" },
+                            { id: "ship_mode_4", title: "Deep Sea Cargo", description: "Containerized shipping routes (Ocean)" }
+                        ]
+                    }
+                ]
+            }
+        };
 
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, modePrompt);
+        await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeShippingListPayload);
         return true;
     }
 
+    // =========================================================================
+    // STEP 1: USER SUPPLIED CONSIGNMENT MASS WEIGHT IN TONNES
+    // =========================================================================
     if (currentState === 'AWAITING_SHIPPING_WEIGHT') {
         const numericWeight = parseFloat(lowerMessage);
         if (isNaN(numericWeight) || numericWeight <= 0) {
@@ -64,15 +112,15 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
 
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: 'AWAITING_SHIPPING_DISTANCE', pending_whatsapp_payload: { cargo_weight: numericWeight } })
+            .update({
+                current_whatsapp_state: 'AWAITING_SHIPPING_DISTANCE',
+                pending_whatsapp_payload: { cargo_weight: numericWeight }
+            })
             .eq('id', tokenRecord.id);
 
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING DISPATCH DETAILS*\n\nPlease specify total cargo transport length:\n\n*DISTANCE (KM)*");
         return true;
     }
-
-
-
 
     return false;
 }
