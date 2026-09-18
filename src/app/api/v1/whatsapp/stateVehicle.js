@@ -10,7 +10,9 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
 
     const normalizedInputToken = String(lowerMessage || '').trim().toLowerCase();
 
-    // STEP 3: USER SELECTED THE VEHICLE ROW ID
+    // =========================================================================
+    // STEP 3: USER TAP-SELECTED A SPECIFIC NATIVE VEHICLE ASSET ROW ITEM
+    // =========================================================================
     if (currentState === 'AWAITING_VEHICLE_SELECTION') {
         const choice = lowerMessage.trim();
         let selectedVehicle = null;
@@ -19,6 +21,7 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             const targetUuid = choice.replace('veh_row_id_', '');
             selectedVehicle = (activeVehicles || []).find(v => v.id === targetUuid);
         } else {
+            // Backward compatibility fallback path logic support for legacy sequential numeric text entries
             const vehicleIndex = parseInt(choice, 10) - 1;
             if (!isNaN(vehicleIndex) && vehicleIndex >= 0 && vehicleIndex < (activeVehicles?.length || 0)) {
                 selectedVehicle = activeVehicles[vehicleIndex];
@@ -26,7 +29,8 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         }
 
         if (!selectedVehicle) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Invalid selection checkpoint. Please open the vehicle menu panel selector to link an asset.`);
+            // FIXED: Prevent aggressive fallback errors from swallowing the active thread view window contexts
+            console.warn(`⚠️ [stateVehicle Selection Checkpoint Mismatch] Input value "${choice}" did not match any active vehicle UUID vectors.`);
             return true;
         }
 
@@ -45,7 +49,9 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         return true;
     }
 
-    // STEP 2: USER TYPED THE DISTANCE VALUE
+    // =========================================================================
+    // STEP 2: USER TYPED THE NUMERIC DISTANCE VALUE PATH
+    // =========================================================================
     if (currentState === 'AWAITING_VEHICLE_DISTANCE') {
         const numericDistance = parseFloat(lowerMessage);
         if (isNaN(numericDistance) || numericDistance <= 0) {
@@ -69,6 +75,7 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             return true;
         }
 
+        // Lock database milestones cleanly BEFORE dispatching interactive layout components over the network wire
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
             current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION',
             pending_whatsapp_payload: { distance: numericDistance }
@@ -92,12 +99,14 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             }
         };
 
+        // FIXED: Yield execution explicitly right here by awaiting the transmission and returning true to stop fall-through state parsing loops
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeFleetListPayload);
         return true;
     }
 
+    // =========================================================================
     // STEP 1: CALCULATOR SUB-MENU SELECTION GRID INITIALIZATION
-    // FIXED: Enforced strict lowercase matching properties verification loop to capture launcher triggers perfectly
+    // =========================================================================
     if (normalizedInputToken === 'launch_calculator_list_menu') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
