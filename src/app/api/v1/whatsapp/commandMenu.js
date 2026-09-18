@@ -125,6 +125,7 @@ export async function displayWhatsappMainMenu({
         }
     };
 
+
     console.log(`📡 Dispatching pure touch-driven list menu panel back to user phone client.`);
     await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeListPayload);
 }

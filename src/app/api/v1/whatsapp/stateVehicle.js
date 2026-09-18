@@ -96,6 +96,7 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         return true;
     }
 
+
     // STEP 1: INITIAL RE-ENTRY SWITCH (LAUNCH CARD OVERVIEW SELECTION GRID)
     if (lowerMessage === 'LAUNCH_CALCULATOR_LIST_MENU') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
