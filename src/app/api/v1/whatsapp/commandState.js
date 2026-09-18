@@ -1,5 +1,6 @@
 // src/app/api/v1/whatsapp/commandState.js
 
+import { sendMetaWhatsappMessage } from './metaClient';
 import { handleVehicleWorkflow } from './stateVehicle';
 import { handleShippingWorkflow } from './stateShipping';
 import { handleFlightWorkflow } from './stateFlight';
@@ -23,79 +24,93 @@ export async function processConversationState({ lowerMessage, userProfile, toke
     // =========================================================================
     // BRANCH A: ABSOLUTE SEPARATED STATE MATCHING GATES (Prevents progression leakage)
     // =========================================================================
-
-    // Explicit Isolation for Vehicle Audit Phases
-    if (currentState === 'AWAITING_VEHICLE_DISTANCE') {
-        return await handleVehicleWorkflow(sharedContext);
-    }
-    if (currentState === 'AWAITING_VEHICLE_SELECTION') {
+    if (currentState === 'AWAITING_VEHICLE_DISTANCE' || currentState === 'AWAITING_VEHICLE_SELECTION') {
         return await handleVehicleWorkflow(sharedContext);
     }
 
-    // Explicit Isolation for Shipping Logistics Phases
-    if (currentState === 'AWAITING_SHIPPING_WEIGHT') {
-        return await handleShippingWorkflow(sharedContext);
-    }
-    if (currentState === 'AWAITING_SHIPPING_DISTANCE') {
-        return await handleShippingWorkflow(sharedContext);
-    }
-    if (currentState === 'AWAITING_SHIPPING_MODE') {
+    if (currentState === 'AWAITING_SHIPPING_WEIGHT' || currentState === 'AWAITING_SHIPPING_DISTANCE' || currentState === 'AWAITING_SHIPPING_MODE') {
         return await handleShippingWorkflow(sharedContext);
     }
 
-    // Explicit Isolation for Route Checker Phases
-    if (currentState === 'AWAITING_ROUTE_DISTANCE') {
-        return await handleRouteWorkflow(sharedContext);
-    }
-    if (currentState === 'AWAITING_ROUTE_VEHICLE') {
+    if (currentState === 'AWAITING_ROUTE_DISTANCE' || currentState === 'AWAITING_ROUTE_VEHICLE') {
         return await handleRouteWorkflow(sharedContext);
     }
 
-    // Explicit Isolation for Aviation Flight Phases
     if (currentState === 'AWAITING_FLIGHT_PASSENGERS' || currentState === 'AWAITING_FLIGHT_ORIGIN' || currentState === 'AWAITING_FLIGHT_DEST') {
         return await handleFlightWorkflow(sharedContext);
     }
 
-    // Explicit Isolation for Power Grid Utilities Phases
     if (currentState === 'AWAITING_POWER_KWH' || currentState === 'AWAITING_POWER_COUNTRY' || currentState === 'AWAITING_POWER_SOURCE') {
         return await handleElectricityWorkflow(sharedContext);
     }
 
-    // Explicit Isolation for Gas Combustion Phases
     if (currentState === 'AWAITING_GAS_QTY' || currentState === 'AWAITING_GAS_TYPE' || currentState === 'AWAITING_GAS_UNIT') {
         return await handleGasWorkflow(sharedContext);
     }
 
-    // Explicit Isolation for Statutory Tax Report Phases
     if (currentState === 'AWAITING_TAX_PERIOD' || currentState === 'AWAITING_TAX_REPORT_ACTION') {
         return await handleTaxWorkflow(sharedContext);
     }
 
     // =========================================================================
-    // BRANCH B: INTERACTIVE SUB-MENU GATES (Triggers inside calculator sub-menu context)
+    // BRANCH B: CALCULATOR SUB-MENU INTERCEPT GATES (Saves states immediately)
     // =========================================================================
     if (currentState === 'INSIDE_CALCULATOR_SUBMENU') {
-        if (lowerMessage === 'calc_opt_1' || lowerMessage === '1') {
-            await handleVehicleWorkflow({ ...sharedContext, lowerMessage: '1', currentState: 'LAUNCH_CALCULATOR_LIST_MENU' });
-            return true;
-        }
-        if (lowerMessage === 'calc_opt_2' || lowerMessage === '2') {
-            await handleShippingWorkflow({ ...sharedContext, lowerMessage: '2' });
-            return true;
-        }
-        if (lowerMessage === 'calc_opt_3' || lowerMessage === '3') {
-            await handleTaxWorkflow({ ...sharedContext, currentState: 'AWAITING_TAX_PERIOD' });
-            return true;
-        }
-        if (lowerMessage === 'calc_opt_4' || lowerMessage === '4') {
-            await handleElectricityWorkflow({ ...sharedContext, lowerMessage: '4' });
-            return true;
-        }
-        if (lowerMessage === 'calc_opt_5' || lowerMessage === '5') {
-            await handleGasWorkflow({ ...sharedContext, lowerMessage: '5' });
+        const cleanChoice = String(lowerMessage || '').trim().toLowerCase();
+
+        // FIXED: Restored clean sequential database updates to lock states before dispatching text prompts over the wire
+        if (cleanChoice === 'calc_opt_1' || cleanChoice === '1') {
+            await supabaseAdmin
+                .from('ecoroute_corporate_api_tokens')
+                .update({ current_whatsapp_state: 'AWAITING_VEHICLE_DISTANCE', pending_whatsapp_payload: {} })
+                .eq('id', tokenRecord.id);
+
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *VEHICLE AUDIT SETUP* \n\nPlease type the total trip travel path: \n\n*DISTANCE (KM)*");
             return true;
         }
 
+        if (cleanChoice === 'calc_opt_2' || cleanChoice === '2') {
+            await supabaseAdmin
+                .from('ecoroute_corporate_api_tokens')
+                .update({ current_whatsapp_state: 'AWAITING_SHIPPING_WEIGHT', pending_whatsapp_payload: {} })
+                .eq('id', tokenRecord.id);
+
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
+            return true;
+        }
+
+        if (cleanChoice === 'calc_opt_3' || cleanChoice === '3') {
+            await supabaseAdmin
+                .from('ecoroute_corporate_api_tokens')
+                .update({ current_whatsapp_state: 'AWAITING_TAX_PERIOD', pending_whatsapp_payload: {} })
+                .eq('id', tokenRecord.id);
+
+            // Re-route context down cleanly into your native touch period options popup menu
+            await handleTaxWorkflow({ ...sharedContext, lowerMessage: '3' });
+            return true;
+        }
+
+        if (cleanChoice === 'calc_opt_4' || cleanChoice === '4') {
+            await supabaseAdmin
+                .from('ecoroute_corporate_api_tokens')
+                .update({ current_whatsapp_state: 'AWAITING_POWER_KWH', pending_whatsapp_payload: {} })
+                .eq('id', tokenRecord.id);
+
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *ELECTRICITY AUDIT SETUP* \n\nPlease input total energy utilization:\n\n*METRICS VOLUME (KWH)*");
+            return true;
+        }
+
+        if (cleanChoice === 'calc_opt_5' || cleanChoice === '5') {
+            await supabaseAdmin
+                .from('ecoroute_corporate_api_tokens')
+                .update({ current_whatsapp_state: 'AWAITING_GAS_QTY', pending_whatsapp_payload: {} })
+                .eq('id', tokenRecord.id);
+
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *GAS COMBUSTION SETUP* \n\nPlease enter the total fuel volume burned:\n\n*QUANTITY CAPACITY AMOUNT*");
+            return true;
+        }
+
+        // Wipe conversational sub-menu state if unmatched text characters are parsed
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
     }
 
