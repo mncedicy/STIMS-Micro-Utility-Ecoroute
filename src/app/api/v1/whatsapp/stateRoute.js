@@ -3,48 +3,39 @@
 import { processCategoryEmissions } from '@/app/api/estimates/categoryPipeline';
 import { formatEmissionPayload } from '@/app/utils/massFormatter';
 import { runEmissionsPipeline } from '@/app/api/estimates/pipelineService';
-import { sendMetaWhatsappMessage } from './metaClient';
+import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
 export async function handleRouteWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
 
-    // FIXED: Global escape hatch. If the user wants to go back, clear states immediately
-    if (['menu', 'main menu', 'exit', 'cancel', 'stop'].includes(lowerMessage.trim())) {
-        await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
-            .eq('id', tokenRecord.id);
-        return false; // Returning false lets execution fall through to redraw the main menu natively
+    if (['menu', 'main menu', 'exit', 'cancel', 'stop'].includes(lowerMessage.trim().toLowerCase())) {
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
+        return false;
     }
 
-    // STEP 3: USER SELECTED THE VEHICLE NUMBER INDEX
     if (currentState === 'AWAITING_ROUTE_VEHICLE') {
-        const vehicleIndex = parseInt(lowerMessage, 10) - 1;
-        const targetDistance = pendingPayload?.distance;
+        const choice = lowerMessage.trim();
+        let selectedVehicle = null;
 
-        if (isNaN(vehicleIndex) || vehicleIndex < 0 || vehicleIndex >= activeVehicles.length) {
-            // FIXED: If they make an invalid selection, warn them but clear the stuck state so they aren't trapped forever
-            await supabaseAdmin
-                .from('ecoroute_corporate_api_tokens')
-                .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
-                .eq('id', tokenRecord.id);
-
-            await sendMetaWhatsappMessage(
-                businessPhoneNumberId,
-                cleanPhoneNumber,
-                `❌ Invalid selection parameter. Session reset. Please type a number matching your vehicle list rows or type 'menu' to return.`
-            );
-            return false; // Fall through to show the main menu card
+        if (choice.startsWith('veh_row_id_')) {
+            const targetUuid = choice.replace('veh_row_id_', '');
+            selectedVehicle = (activeVehicles || []).find(v => v.id === targetUuid);
+        } else {
+            const vehicleIndex = parseInt(choice, 10) - 1;
+            if (!isNaN(vehicleIndex) && vehicleIndex >= 0 && vehicleIndex < (activeVehicles?.length || 0)) {
+                selectedVehicle = activeVehicles[vehicleIndex];
+            }
         }
 
-        const selectedVehicle = activeVehicles[vehicleIndex];
+        if (!selectedVehicle) {
+            console.warn(`⚠️ [stateRoute Mismatch] Input value "${choice}" did not match any active vehicle UUID vectors.`);
+            return true;
+        }
+
+        const targetDistance = pendingPayload?.distance;
         const vehicleId = selectedVehicle.id;
 
-        await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: null, pending_whatsapp_payload: {} })
-            .eq('id', tokenRecord.id);
-
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `🗺️ Computing terrain matrix optimizations and routing traces...`);
 
         const form = { type: 'vehicle', distance: targetDistance.toString(), unit: 'km', vehicle_id: vehicleId, save_log: true };
@@ -56,7 +47,6 @@ export async function handleRouteWorkflow({ lowerMessage, userProfile, tokenReco
         return true;
     }
 
-    // STEP 2: USER INPUT THE TRIP PATH DISTANCE NUMBER
     if (currentState === 'AWAITING_ROUTE_DISTANCE') {
         const numericDistance = parseFloat(lowerMessage);
         if (isNaN(numericDistance) || numericDistance <= 0) {
@@ -64,19 +54,40 @@ export async function handleRouteWorkflow({ lowerMessage, userProfile, tokenReco
             return true;
         }
 
-        await supabaseAdmin
-            .from('ecoroute_corporate_api_tokens')
-            .update({ current_whatsapp_state: 'AWAITING_ROUTE_VEHICLE', pending_whatsapp_payload: { distance: numericDistance } })
-            .eq('id', tokenRecord.id);
+        let fleetAssetsList = activeVehicles || [];
+        if (!fleetAssetsList || fleetAssetsList.length === 0) {
+            const { data: dbRows } = await supabaseAdmin.from('ecoroute_vehicles').select('id, registration_number, make, model, is_active').eq('user_id', userProfile.id);
+            fleetAssetsList = (dbRows || []).filter(v => v.is_active !== false);
+        }
 
-        let prompt = `🗺️ *ROUTE CHECKER: SELECT VEHICLE ASSET* 🗺️\n\nChoose a linked profile by replying with its list item number:\n\n`;
-        activeVehicles.forEach((veh, index) => {
-            const reg = String(veh.registration_number || 'FLEET').toUpperCase();
-            const make = String(veh.make || 'ASSET').toUpperCase();
-            prompt += `*${index + 1}* — ${reg} [${make}]\n`;
+        if (fleetAssetsList.length === 0) {
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "ℹ️ Aborted: No active vehicles linked to your EcoRoute profile.");
+            await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
+            return true;
+        }
+
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_ROUTE_VEHICLE', pending_whatsapp_payload: { distance: numericDistance } }).eq('id', tokenRecord.id);
+
+        const nativeFleetRows = fleetAssetsList.map((veh, index) => {
+            return {
+                id: `veh_row_id_${veh.id}`,
+                title: `${index + 1} — ${String(veh.registration_number || 'FLEET').toUpperCase()}`.substring(0, 24),
+                description: `${String(veh.make || 'ASSET').toUpperCase()} [${String(veh.model || 'NODE').toUpperCase()}]`.substring(0, 72)
+            };
         });
 
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, prompt);
+        const nativeRouteListPayload = {
+            type: "list",
+            header: { type: "text", text: "🗺️ ROUTE CHECKER ASSET 🗺️" },
+            body: { text: "Choose an active fleet profile asset from your registered dashboard list down below to complete routing analysis calculations:" },
+            action: {
+                button: "Select Asset Row",
+                // FIXED: Shortened section title to 'AUTHORIZED FLEET' (16 chars) to satisfy Meta limits
+                sections: [{ title: "AUTHORIZED FLEET", rows: nativeFleetRows }]
+            }
+        };
+
+        await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeRouteListPayload);
         return true;
     }
 

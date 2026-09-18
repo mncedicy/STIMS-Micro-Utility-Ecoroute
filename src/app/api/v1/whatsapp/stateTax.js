@@ -3,13 +3,12 @@
 import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClient';
 import { emailPdfReport } from '@/app/actions/email';
 
-export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState, incomingServerUrl, pendingPayload }) {
+export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState, pendingPayload }) {
     if (['menu', 'main menu', 'exit', 'cancel'].includes(lowerMessage.trim().toLowerCase())) {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         return false;
     }
 
-    // STEP 2: EMAIL EXPORT DISPATCH RUN
     if (currentState === 'AWAITING_TAX_REPORT_ACTION') {
         const choice = lowerMessage.trim();
         if (choice === '1' || choice === 'action_email_pdf') {
@@ -17,8 +16,6 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
             const startDate = payload.startDate;
             const endDate = payload.endDate;
             const targetEmail = userProfile?.email || '';
-
-            console.log("📡 Server Host Context URL : NATIVE_SERVER_ACTION", " | 👤 UserProfile:", userProfile, " | 📅 Start Date:", startDate, " | 📅 End Date:", endDate);
 
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
@@ -45,13 +42,8 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
         return false;
     }
 
-    // =========================================================================
-    // FIXED: PARSE AND INITIALIZE NATIVE LIST MESSAGES FOR SARS COMPLIANCE PERIODS
-    // =========================================================================
     if (currentState === 'AWAITING_TAX_PERIOD') {
         const choice = lowerMessage.trim();
-
-        // Map the new incoming button IDs safely onto numerical choices for calculation processing
         const choiceMapping = { "tax_opt_1": "1", "tax_opt_2": "2", "tax_opt_3": "3", "tax_opt_4": "4", "tax_opt_5": "5", "tax_opt_6": "6" };
         const resolvedChoice = choiceMapping[choice] || choice;
 
@@ -80,8 +72,8 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
             label = `Previous Tax Year (${baseYear - 1}/${baseYear})`;
         }
 
-        const startIso = startDate.toISOString().split('T')[0];
-        const endIso = endDate.toISOString().split('T')[0];
+        const startIso = startDate.toISOString().split('T');
+        const endIso = endDate.toISOString().split('T');
 
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Querying secure statutory ledgers for period: ${label}...`);
 
@@ -94,7 +86,6 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
 
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_TAX_REPORT_ACTION', pending_whatsapp_payload: { startDate: startIso, endDate: endIso } }).eq('id', tokenRecord.id);
 
-        // FIXED: Render the tax summary text card alongside native touch buttons triggers for actions 
         const taxSummaryPayload = {
             type: "button",
             body: {
@@ -102,18 +93,13 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
                     `📊 *COMPILED SOURCE LEDGER CONTEXT*:\n• Total Rows Analyzed: *${totalEntries} entries*\n• Total Carbon Weight: *${totalKg.toFixed(2)} KG*\n• Metric Tonnes (MT): *${totalMt.toFixed(4)} MT*\n\n` +
                     `⚖️ *VERIFIED AUDIT INPUT BOUNDS*:\n• Statutory Base Rate: *R190.00 / tonne*\n• Basic Free Allowance: *60%*\n• Taxable Carbon Mass: *${taxableVolumeMt.toFixed(4)} MT*\n• *Total Accrued Liability: R ${accruedLiabilityZar.toFixed(2)} ZAR*`
             },
-            action: {
-                buttons: [
-                    { type: "reply", reply: { id: "action_email_pdf", title: "📧 Email PDF Report" } }
-                ]
-            }
+            action: { buttons: [{ type: "reply", reply: { id: "action_email_pdf", title: "📧 Email PDF Report" } }] }
         };
 
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, taxSummaryPayload);
         return true;
     }
 
-    // FIXED: Initial sub-menu trigger dispatches a clean native selection list menu sheet parameters object 
     if (lowerMessage === '3') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_TAX_PERIOD', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
@@ -125,7 +111,8 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
                 button: "Choose Period",
                 sections: [
                     {
-                        title: "SARS STANDARD TIMEFRAMES",
+                        // FIXED: Shortened section title to 'SARS TIMEFRAMES' (15 chars) to prevent validation error 131009
+                        title: "SARS TIMEFRAMES",
                         rows: [
                             { id: "tax_opt_1", title: "One Month", description: "SARS Standard Monthly Audit Cycle" },
                             { id: "tax_opt_2", title: "Three Months", description: "Quarterly Corporate Review Window" },
@@ -142,8 +129,6 @@ export async function handleTaxWorkflow({ lowerMessage, userProfile, tokenRecord
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeTaxList);
         return true;
     }
-
-
 
     return false;
 }

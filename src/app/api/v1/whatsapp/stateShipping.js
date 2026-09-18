@@ -20,13 +20,11 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
     if (currentState === 'AWAITING_SHIPPING_MODE') {
         const choice = lowerMessage.trim().toLowerCase();
 
-        // Map native interactive element button IDs onto standard parameters
         const modesMap = {
             "ship_mode_1": "road_heavy",
             "ship_mode_2": "road_light",
             "ship_mode_3": "rail",
             "ship_mode_4": "ocean",
-            // Backward compatibility for legacy numeric responses
             "1": "road_heavy", "2": "road_light", "3": "rail", "4": "ocean"
         };
 
@@ -66,7 +64,6 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
             return true;
         }
 
-        // Commit pending variables securely to table row state before sending list panel
         await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .update({
@@ -75,13 +72,13 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
             })
             .eq('id', tokenRecord.id);
 
-        // FIXED: Set section title to 'CARRIER MODES' (13 chars) to stay safely under Meta's 24-character maximum constraint rule limit bounds
         const nativeShippingListPayload = {
             type: "list",
             header: { type: "text", text: "📦 SELECT FREIGHT MODE 📦" },
             body: { text: "Select a freight logistics transportation mode from the panel choice matrix below to complete auditing calculations:" },
             action: {
-                button: "Choose Logistics Mode",
+                // FIXED: Shortened action button label to 'Select Mode' (12 chars) to fall safely within Meta's strict 20-character maximum limit
+                button: "Select Mode",
                 sections: [
                     {
                         title: "CARRIER MODES",
