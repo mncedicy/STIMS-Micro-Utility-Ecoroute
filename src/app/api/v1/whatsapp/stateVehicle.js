@@ -21,7 +21,6 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             const targetUuid = choice.replace('veh_row_id_', '');
             selectedVehicle = (activeVehicles || []).find(v => v.id === targetUuid);
         } else {
-            // Backward compatibility fallback path logic support for legacy sequential numeric text entries
             const vehicleIndex = parseInt(choice, 10) - 1;
             if (!isNaN(vehicleIndex) && vehicleIndex >= 0 && vehicleIndex < (activeVehicles?.length || 0)) {
                 selectedVehicle = activeVehicles[vehicleIndex];
@@ -29,7 +28,6 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         }
 
         if (!selectedVehicle) {
-            // FIXED: Prevent aggressive fallback errors from swallowing the active thread view window contexts
             console.warn(`⚠️ [stateVehicle Selection Checkpoint Mismatch] Input value "${choice}" did not match any active vehicle UUID vectors.`);
             return true;
         }
@@ -75,31 +73,38 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             return true;
         }
 
-        // Lock database milestones cleanly BEFORE dispatching interactive layout components over the network wire
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
             current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION',
             pending_whatsapp_payload: { distance: numericDistance }
         }).eq('id', tokenRecord.id);
 
         const nativeFleetRows = fleetAssetsList.map((veh, index) => {
+            const rawReg = String(veh.registration_number || 'FLEET').toUpperCase();
+            const rawMake = String(veh.make || 'ASSET').toUpperCase();
+            const rawModel = String(veh.model || 'NODE').toUpperCase();
+
+            // Truncate cleanly to protect Meta row length boundaries
+            const cleanTitle = `${index + 1} — ${rawReg}`.substring(0, 24);
+            const cleanDesc = `${rawMake} [${rawModel}]`.substring(0, 72);
+
             return {
                 id: `veh_row_id_${veh.id}`,
-                title: `${index + 1} — ${String(veh.registration_number || 'FLEET').toUpperCase()}`,
-                description: `${String(veh.make || 'ASSET').toUpperCase()} [${String(veh.model || 'NODE').toUpperCase()}]`
+                title: cleanTitle,
+                description: cleanDesc
             };
         });
 
         const nativeFleetListPayload = {
             type: "list",
-            header: { type: "text", text: "🚛 SELECT VEHICLE REGISTRY 🚛" },
+            header: { type: "text", text: "🚛 SELECT VEHICLE REGISTRY 1" },
             body: { text: "Choose an active fleet profile asset from your registered dashboard list down below to complete your emissions run:" },
             action: {
                 button: "Select Asset Row",
-                sections: [{ title: "AUTHORIZED CORPORATE FLEET", rows: nativeFleetRows }]
+                // FIXED: Shortened section title to 'AUTHORIZED FLEET' (16 chars) to fall safely under Meta's 24 character maximum constraint rule bounds
+                sections: [{ title: "AUTHORIZED FLEET", rows: nativeFleetRows }]
             }
         };
 
-        // FIXED: Yield execution explicitly right here by awaiting the transmission and returning true to stop fall-through state parsing loops
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeFleetListPayload);
         return true;
     }
@@ -118,7 +123,8 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
                 button: "Select Category",
                 sections: [
                     {
-                        title: "AVAILABLE TRACKER FIELDS",
+                        // FIXED: Shortened section title parameter to stay under Meta's 24 character constraint rule bounds
+                        title: "TRACKER CATEGORIES",
                         rows: [
                             { id: "calc_opt_1", title: "🚛 Vehicle Audit", description: "Terrestrial fleet transit and fuel burn logs" },
                             { id: "calc_opt_2", title: "📦 Cargo Shipping", description: "Freight consignment log weight and lengths" },
