@@ -7,6 +7,7 @@ import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClien
 import { buildAuditCardString } from './messageTemplates';
 
 export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
+
     if (currentState === 'AWAITING_VEHICLE_SELECTION') {
         const vehicleIndex = parseInt(lowerMessage, 10) - 1;
         const targetDistance = pendingPayload?.distance;
@@ -40,7 +41,8 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
 
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION', pending_whatsapp_payload: { distance: numericDistance } }).eq('id', tokenRecord.id);
 
-        let prompt = `🚛 *SELECT VEHICLE ROW NUMBER* 🚛\n\nChoose an asset profile by replying with its number:\n\n`;
+        // FIXED: Removed all legacy hardcoded "Reply with a number" textual guide string phrases completely
+        let prompt = `🚛 *SELECT VEHICLE ROW NUMBER* 🚛\n\nChoose an asset profile from your registered list:\n\n`;
         activeVehicles.forEach((veh, index) => {
             prompt += `*${index + 1}* — ${String(veh.registration_number || 'FLEET').toUpperCase()} [${String(veh.make || 'ASSET').toUpperCase()}]\n`;
         });
@@ -49,10 +51,8 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         return true;
     }
 
-    // =========================================================================
-    // FIXED: DISPATCH NATIVE INTERACTIVE LIST COMPONENT FOR CALCULATOR OPTIONS
-    // =========================================================================
-    if (lowerMessage === '1') {
+    // FIXED: Moved the standalone list generation routine block inside a single dedicated initialization helper trigger
+    if (lowerMessage === 'LAUNCH_CALCULATOR_LIST_MENU') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
         const nativeCalcList = {
@@ -65,11 +65,11 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
                     {
                         title: "AVAILABLE TRACKER FIELDS",
                         rows: [
-                            { id: "calc_opt_1", title: "🚛 1. Vehicle Audit", description: "Terrestrial fleet transit and fuel burn logs" },
-                            { id: "calc_opt_2", title: "📦 2. Cargo Shipping", description: "Freight consignment log weight and lengths" },
-                            { id: "calc_opt_3", title: "✈️ 3. Flight Aviation", description: "Passenger volume airport terminal codes" },
-                            { id: "calc_opt_4", title: "⚡ 4. Electricity Utility", description: "Scope 2 grid region consumption tallies" },
-                            { id: "calc_opt_5", title: "🔥 5. Gas Stationary", description: "Scope 1 stationary fuel burner elements" }
+                            { id: "calc_opt_1", title: "🚛 Vehicle Audit", description: "Terrestrial fleet transit and fuel burn logs" },
+                            { id: "calc_opt_2", title: "📦 Cargo Shipping", description: "Freight consignment log weight and lengths" },
+                            { id: "calc_opt_3", title: "✈️ Flight Aviation", description: "Passenger volume airport terminal codes" },
+                            { id: "calc_opt_4", title: "⚡ Electricity Utility", description: "Scope 2 grid region consumption tallies" },
+                            { id: "calc_opt_5", title: "🔥 Gas Stationary", description: "Scope 1 stationary fuel burner elements" }
                         ]
                     }
                 ]

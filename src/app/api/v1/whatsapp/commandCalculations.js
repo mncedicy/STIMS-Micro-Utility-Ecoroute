@@ -4,18 +4,20 @@ import { sendMetaWhatsappMessage } from './metaClient';
 import { processConversationState } from './commandState';
 import { executeDirectCalculations } from './directCalculations';
 
+/**
+ * Main coordinator gate for accounting workflows.
+ * Fetches the freshest database row data before delegating to wizard workflows.
+ */
 export async function executeEmissionsCalculations({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, incomingServerUrl }) {
-    console.log(`ℹ️ [Calculations Gate Entry] Processing message: "${lowerMessage}"`);
+    console.log(`ℹ️ [Calculations Gate Entry] Processing message payload: "${lowerMessage}"`);
 
     try {
-        // FIXED: Pull the fresh token row state directly from the database to reflect interactive clicks instantly
-        const { data: freshTokenRecord, error: tokenError } = await supabaseAdmin
+        // Fetch freshest token state directly from database to reflect interactive touches instantly
+        const { data: freshTokenRecord } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .select('*')
             .eq('id', tokenRecord.id)
             .maybeSingle();
-
-        if (tokenError) console.error(`🚨 [Token Fetch Failure]:`, tokenError.message);
 
         const activeTokenRecord = freshTokenRecord || tokenRecord;
 
@@ -28,7 +30,7 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         const mockTokenQuery = { data: activeTokenRecord };
         const mockProfRes = { data: userProfile };
 
-        // FIXED: Forwarding the absolute latest database token state values down into your wizard engines
+        // 1. Evaluate conversation state machine transitions first
         const stateHandled = await processConversationState({
             lowerMessage,
             userProfile,
@@ -47,8 +49,18 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
 
         if (stateHandled) return true;
 
+        // 2. Delegate straight macro text parsing command execution down to the isolated file channel
         return await executeDirectCalculations({
-            lowerMessage, userProfile, tokenRecord: activeTokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes
+            lowerMessage,
+            userProfile,
+            tokenRecord: activeTokenRecord,
+            currentUsage,
+            usageCap,
+            businessPhoneNumberId,
+            cleanPhoneNumber,
+            appMetaRes,
+            mockTokenQuery,
+            mockProfRes
         });
 
     } catch (criticalRuntimeError) {

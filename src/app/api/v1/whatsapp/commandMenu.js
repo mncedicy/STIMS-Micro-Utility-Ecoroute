@@ -27,12 +27,12 @@ export async function displayWhatsappMainMenu({
     const mockProfRes = { data: userProfile };
 
     // =========================================================================
-    // EXCLUSIVE NATIVE COMPONENT BUTTON ID LISTENERS
+    // EXCLUSIVE NATIVE COMPONENT BUTTON INTERCEPT ROUTERS
     // =========================================================================
     if (cleanInput === 'menu_option_1' || cleanInput === '1') {
-        // FIXED: Transfer context directly to stateVehicle without sending the redundant legacy plain text layout block
+        // Forward directly to vehicle workflow to launch the list picker natively without text duplicates
         await handleVehicleWorkflow({
-            lowerMessage: '1', userProfile, tokenRecord, currentUsage: tokenRecord?.current_monthly_usage || 0,
+            lowerMessage: 'LAUNCH_CALCULATOR_LIST_MENU', userProfile, tokenRecord, currentUsage: tokenRecord?.current_monthly_usage || 0,
             usageCap: tokenRecord?.usage_limit_cap || 100, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin,
             appMetaRes: null, activeVehicles: [], mockTokenQuery, mockProfRes, currentState: null, pendingPayload: {}
         });
@@ -46,7 +46,7 @@ export async function displayWhatsappMainMenu({
     }
 
     if (cleanInput === 'menu_option_3' || cleanInput === '3') {
-        // FIXED: Transfer context directly to stateTax without sending the redundant legacy plain text layout block
+        // Forward directly to tax sub-module to load native period ranges options popup panel natively
         await handleTaxWorkflow({
             lowerMessage: '3', userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin,
             currentState: null, incomingServerUrl, pendingPayload: {}
@@ -93,7 +93,7 @@ export async function displayWhatsappMainMenu({
     }
 
     // =========================================================================
-    // NATIVE UI COMPONENTS: RENDER PURE GRID SELECTION LIST EXCLUDING ALL TEXT GUIDE NUMBERS
+    // NATIVE LIST LAYOUT GENERATION - REMOVED LEGACY HINT STRINGS ENTIRELY
     // =========================================================================
     const rowsArray = [
         { id: "menu_option_1", title: "📊 Audit Calculator", description: "Compute Scope 1 & 2 emissions vectors" },
