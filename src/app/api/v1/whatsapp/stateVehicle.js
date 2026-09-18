@@ -8,25 +8,24 @@ import { buildAuditCardString } from './messageTemplates';
 
 export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
 
-    // STEP 3: USER TAP-SELECTED A SPECIFIC NATIVE VEHICLE ASSET ROW ITEM
+    // STEP 3: USER SELECTED THE VEHICLE ROW ID ASSET INTERACTION BUTTON
     if (currentState === 'AWAITING_VEHICLE_SELECTION') {
         const choice = lowerMessage.trim();
         let selectedVehicle = null;
 
-        // FIXED: Dynamically resolve vehicle record target via unique interactive element payload ID token arrays
+        // FIXED: Retrieve verified vehicles rows list matrix securely from active query variables
         if (choice.startsWith('veh_row_id_')) {
             const targetUuid = choice.replace('veh_row_id_', '');
-            selectedVehicle = activeVehicles.find(v => v.id === targetUuid);
+            selectedVehicle = (activeVehicles || []).find(v => v.id === targetUuid);
         } else {
-            // Fallback backward compatibility logic support for legacy sequential numeric text entries
             const vehicleIndex = parseInt(choice, 10) - 1;
-            if (!isNaN(vehicleIndex) && vehicleIndex >= 0 && vehicleIndex < activeVehicles.length) {
+            if (!isNaN(vehicleIndex) && vehicleIndex >= 0 && vehicleIndex < (activeVehicles?.length || 0)) {
                 selectedVehicle = activeVehicles[vehicleIndex];
             }
         }
 
         if (!selectedVehicle) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Invalid asset selection. Please use the menu picker panel to select a vehicle.`);
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Invalid selection checkpoint. Please open the vehicle menu panel selector to link an asset.`);
             return true;
         }
 
@@ -45,25 +44,39 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         return true;
     }
 
-    // STEP 2: USER SUPPLIED TRIP MOVEMENT DISTANCE PATH NUMBER
+    // STEP 2: USER TYPED THE NUMERIC DISTANCE VALUE PATH
     if (currentState === 'AWAITING_VEHICLE_DISTANCE') {
         const numericDistance = parseFloat(lowerMessage);
         if (isNaN(numericDistance) || numericDistance <= 0) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid value. Please type a positive numerical distance amount (e.g. 45).");
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid distance entry. Please input a positive numerical amount in KM (e.g., 45):");
             return true;
         }
 
-        if (!activeVehicles || activeVehicles.length === 0) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "ℹ️ Aborted: No active vehicles found on this profile. Link an asset row via your dashboard panel first.");
+        // FIXED: Pull fallback verification arrays directly from database table rows if contextual memory drops out
+        let fleetAssetsList = activeVehicles || [];
+        if (!fleetAssetsList || fleetAssetsList.length === 0) {
+            console.log(`📡 [stateVehicle Lookup Fallback] Context empty. Fetching database rows live for user: ${userProfile.id}`);
+            const { data: dbRows } = await supabaseAdmin
+                .from('ecoroute_vehicles')
+                .select('id, registration_number, make, model, is_active')
+                .eq('user_id', userProfile.id);
+
+            fleetAssetsList = (dbRows || []).filter(v => v.is_active !== false);
+        }
+
+        if (fleetAssetsList.length === 0) {
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "ℹ️ Aborted: No active vehicles linked to your EcoRoute profile. Link an asset inside your web dashboard panel first.");
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
             return true;
         }
 
-        // Commit transaction fields state ahead of network prompt dispatch window
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION', pending_whatsapp_payload: { distance: numericDistance } }).eq('id', tokenRecord.id);
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
+            current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION',
+            pending_whatsapp_payload: { distance: numericDistance }
+        }).eq('id', tokenRecord.id);
 
-        // FIXED: Programmatically map array items directly into structured Meta row component parameters 
-        const nativeFleetRows = activeVehicles.map((veh, index) => {
+        // FIXED: Safely compile verified array metrics directly into structured interactive row component arrays
+        const nativeFleetRows = fleetAssetsList.map((veh, index) => {
             const regNum = String(veh.registration_number || 'FLEET').toUpperCase();
             const makeLabel = String(veh.make || 'ASSET').toUpperCase();
             const modelLabel = String(veh.model || 'NODE').toUpperCase();
@@ -75,11 +88,10 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             };
         });
 
-        // FIXED: Render high-fidelity native interactive selector layout frame panel over the wire
         const nativeFleetListPayload = {
             type: "list",
             header: { type: "text", text: "🚛 SELECT VEHICLE REGISTRY 🚛" },
-            body: { text: "Choose an active fleet profile asset from your registered dashboard list down below to calculate emissions parameters:" },
+            body: { text: "Choose an active fleet profile asset from your registered dashboard list down below to complete your emissions run:" },
             action: {
                 button: "Select Asset Row",
                 sections: [
@@ -91,13 +103,11 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             }
         };
 
-        console.log(`📡 Dispatching native vehicle asset selection interactive popup selector card.`);
+        console.log(`📡 [Interactive Dispatch] Delivering interactive fleet grid asset list layout message bubble.`);
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeFleetListPayload);
         return true;
     }
 
-
-    // STEP 1: INITIAL RE-ENTRY SWITCH (LAUNCH CARD OVERVIEW SELECTION GRID)
     if (lowerMessage === 'LAUNCH_CALCULATOR_LIST_MENU') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
@@ -122,8 +132,7 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             }
         };
 
-
-        await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeCalcList);
+        await sendMetaInteractiveMessage(businessPhoneNumberId, businessPhoneNumberId, nativeCalcList);
         return true;
     }
 
