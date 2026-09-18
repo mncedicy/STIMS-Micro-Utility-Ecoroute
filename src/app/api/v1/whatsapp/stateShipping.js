@@ -75,7 +75,7 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
             })
             .eq('id', tokenRecord.id);
 
-        // FIXED: Generated native Meta interactive list payload structure matching 24-character constraints rules perfectly
+        // FIXED: Set section title to 'CARRIER MODES' (13 chars) to stay safely under Meta's 24-character maximum constraint rule limit bounds
         const nativeShippingListPayload = {
             type: "list",
             header: { type: "text", text: "📦 SELECT FREIGHT MODE 📦" },
@@ -84,7 +84,7 @@ export async function handleShippingWorkflow({ lowerMessage, userProfile, tokenR
                 button: "Choose Logistics Mode",
                 sections: [
                     {
-                        title: "FREIGHT CARRIER MODES", // 21 characters (Safe under 24 maximum limit)
+                        title: "CARRIER MODES",
                         rows: [
                             { id: "ship_mode_1", title: "Linehaul Truck", description: "Long-distance freight (Road Heavy)" },
                             { id: "ship_mode_2", title: "Urban Delivery Van", description: "Last-mile courier logistics (Road Light)" },
