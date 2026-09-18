@@ -8,12 +8,11 @@ import { buildAuditCardString } from './messageTemplates';
 
 export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
 
-    // STEP 3: USER SELECTED THE VEHICLE ROW ID ASSET INTERACTION BUTTON
+    // STEP 3: USER SELECTED THE VEHICLE ROW ID
     if (currentState === 'AWAITING_VEHICLE_SELECTION') {
         const choice = lowerMessage.trim();
         let selectedVehicle = null;
 
-        // FIXED: Retrieve verified vehicles rows list matrix securely from active query variables
         if (choice.startsWith('veh_row_id_')) {
             const targetUuid = choice.replace('veh_row_id_', '');
             selectedVehicle = (activeVehicles || []).find(v => v.id === targetUuid);
@@ -44,7 +43,7 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
         return true;
     }
 
-    // STEP 2: USER TYPED THE NUMERIC DISTANCE VALUE PATH
+    // STEP 2: USER TYPED THE DISTANCE VALUE
     if (currentState === 'AWAITING_VEHICLE_DISTANCE') {
         const numericDistance = parseFloat(lowerMessage);
         if (isNaN(numericDistance) || numericDistance <= 0) {
@@ -52,10 +51,8 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             return true;
         }
 
-        // FIXED: Pull fallback verification arrays directly from database table rows if contextual memory drops out
         let fleetAssetsList = activeVehicles || [];
         if (!fleetAssetsList || fleetAssetsList.length === 0) {
-            console.log(`📡 [stateVehicle Lookup Fallback] Context empty. Fetching database rows live for user: ${userProfile.id}`);
             const { data: dbRows } = await supabaseAdmin
                 .from('ecoroute_vehicles')
                 .select('id, registration_number, make, model, is_active')
@@ -75,16 +72,11 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             pending_whatsapp_payload: { distance: numericDistance }
         }).eq('id', tokenRecord.id);
 
-        // FIXED: Safely compile verified array metrics directly into structured interactive row component arrays
         const nativeFleetRows = fleetAssetsList.map((veh, index) => {
-            const regNum = String(veh.registration_number || 'FLEET').toUpperCase();
-            const makeLabel = String(veh.make || 'ASSET').toUpperCase();
-            const modelLabel = String(veh.model || 'NODE').toUpperCase();
-
             return {
                 id: `veh_row_id_${veh.id}`,
-                title: `${index + 1} — ${regNum}`,
-                description: `${makeLabel} [${modelLabel}]`
+                title: `${index + 1} — ${String(veh.registration_number || 'FLEET').toUpperCase()}`,
+                description: `${String(veh.make || 'ASSET').toUpperCase()} [${String(veh.model || 'NODE').toUpperCase()}]`
             };
         });
 
@@ -94,27 +86,22 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             body: { text: "Choose an active fleet profile asset from your registered dashboard list down below to complete your emissions run:" },
             action: {
                 button: "Select Asset Row",
-                sections: [
-                    {
-                        title: "AUTHORIZED CORPORATE FLEET",
-                        rows: nativeFleetRows
-                    }
-                ]
+                sections: [{ title: "AUTHORIZED CORPORATE FLEET", rows: nativeFleetRows }]
             }
         };
 
-        console.log(`📡 [Interactive Dispatch] Delivering interactive fleet grid asset list layout message bubble.`);
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeFleetListPayload);
         return true;
     }
 
-    if (lowerMessage === 'LAUNCH_CALCULATOR_LIST_MENU') {
+    // STEP 1: CALCULATOR SUB-MENU SELECTION GRID INITIALIZATION
+    if (lowerMessage === 'launch_calculator_list_menu') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
         const nativeCalcList = {
             type: "list",
             header: { type: "text", text: "Emissions Carbon Trackers" },
-            body: { text: "Select an active emissions category parameter grid row from the selector panel below to start your step-by-step calculator audit run:" },
+            body: { text: "Select an active emissions category from the selector panel below to start your calculator run:" },
             action: {
                 button: "Select Category",
                 sections: [
@@ -132,10 +119,10 @@ export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRe
             }
         };
 
-        await sendMetaInteractiveMessage(businessPhoneNumberId, businessPhoneNumberId, nativeCalcList);
+        // FIXED: Corrected destination recipient from businessPhoneNumberId back to cleanPhoneNumber
+        await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeCalcList);
         return true;
     }
-
 
     return false;
 }
