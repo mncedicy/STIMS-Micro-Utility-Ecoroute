@@ -15,7 +15,6 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
     console.log(`ℹ️ [Calculations Gate Entry] Real-time state check for input: "${lowerMessage}"`);
 
     try {
-        // FIXED: Force a fresh, blocking database read to capture the state change made in the previous turn
         const { data: latestTokenRow, error: syncError } = await supabaseAdmin
             .from('ecoroute_corporate_api_tokens')
             .select('*')
@@ -25,7 +24,6 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         if (syncError) console.error(`🚨 [State Sync Error]:`, syncError.message);
         const activeTokenRecord = latestTokenRow || tokenRecord;
 
-        // Fetch application metadata and user's fleet assets concurrently
         const [appMetaRes, vehiclesResult] = await Promise.all([
             supabaseAdmin.from('applications').select('*').eq('app_id', 'ecoroute').maybeSingle(),
             supabaseAdmin.from('ecoroute_vehicles').select('id, registration_number, make, model, is_active').eq('user_id', userProfile.id)
@@ -34,8 +32,6 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
         const activeVehicles = (vehiclesResult.data || []).filter(veh => veh.is_active !== false);
         const mockTokenQuery = { data: activeTokenRecord };
         const mockProfRes = { data: userProfile };
-
-        console.log(`🔄 [State Handover] Forwarding latest state "${activeTokenRecord.current_whatsapp_state}" and ${activeVehicles.length} vehicles down to engine.`);
 
         // 1. Process active conversational multi-step wizard stages first with fresh data
         const stateHandled = await processConversationState({
@@ -56,6 +52,9 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
 
         if (stateHandled) return true;
 
+        // FIXED: Do not intercept interactive button callback IDs as legacy standalone plain-text macro commands
+        const isInteractiveCallbackId = lowerMessage.startsWith('gas_type_') || lowerMessage.startsWith('gas_unit_');
+
         // 2. Standalone fallback text-parsing commands (Macro triggers)
         if (lowerMessage.startsWith('vehicle')) {
             const pattern = /^vehicle\s+(\d+(?:\.\d+)?)\s*(km|miles)\s+([a-z0-9-]+)\$/i;
@@ -70,17 +69,17 @@ export async function executeEmissionsCalculations({ lowerMessage, userProfile, 
             return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || vehicleId.toUpperCase()}`, `${distance} ${unit.toUpperCase()}`, payload, usageCap, currentUsage));
         }
 
-        if (lowerMessage.startsWith('flight')) {
-            const pattern = /^flight\s+(\d+)\s+([a-z]{3})\s+([a-z]{3})\s*(economy|business|first)\$/i;
+        if (lowerMessage.startsWith('gas') && !isInteractiveCallbackId) {
+            const pattern = /^gas\s+(\d+(?:\.\d+)?)\s*(natural_gas|lpg)\s+(m3|kwh|liter|kg)\$/i;
             const match = lowerMessage.match(pattern);
-            if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: flight [pax] [origin] [dest] [class]\nExample: flight 12 jnb cpt business");
+            if (!match) return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "💡 Format Error.\n\nUse: gas [quantity] [type] [unit]\nExample: gas 120 natural_gas m3");
 
-            const [, passengers, origin, dest, flightClass] = match;
-            const form = { type: 'flight', passengers: passengers.toString(), origin_iata: origin.trim().toUpperCase(), dest_iata: dest.trim().toUpperCase(), flight_class: flightClass || 'economy', save_log: true };
-            const { calculatedKg, metadataLog } = await processCategoryEmissions('flight', form, activeTokenRecord?.api_token || '');
+            const [, quantity, gasType, gasUnit] = match;
+            const form = { type: 'gas', quantity: quantity.toString(), gas_type: gasType.toUpperCase(), gas_unit: gasUnit.toLowerCase(), save_log: true };
+            const { calculatedKg, metadataLog } = await processCategoryEmissions('gas', form, activeTokenRecord?.api_token || '');
             const payload = formatEmissionPayload(calculatedKg);
-            await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'flight', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
-            return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Flight: ${origin.toUpperCase()} ➔ ${dest.toUpperCase()} (${flightClass || 'economy'})`, `${passengers} Pax`, payload, usageCap, currentUsage));
+            await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'gas', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
+            return sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Gas Combustion: ${gasType.toUpperCase()}`, `${quantity} ${gasUnit.toUpperCase()}`, payload, usageCap, currentUsage));
         }
 
         return false;
