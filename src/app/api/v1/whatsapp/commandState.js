@@ -11,7 +11,6 @@ import { handleTaxWorkflow } from './stateTax';
 
 /**
  * Master State Router: Isolates and directs conversational traffic based on the active state string token.
- * Enforces absolute separation between phase steps to prevent cross-condition parameter leakages.
  */
 export async function processConversationState(contextPayload) {
     const lowerMessage = String(contextPayload?.lowerMessage || '').trim().toLowerCase();
@@ -31,18 +30,13 @@ export async function processConversationState(contextPayload) {
     console.log(`📡 [State Engine Router] Evaluating isolated routing path for state: "${currentState}" | Input: "${lowerMessage}"`);
 
     // =========================================================================
-    // FIXED: STATELESS EMERGENCY RESCUE GATE SUPPORTING HYPHENATED PREFIX MATCHES
+    // BRANCH A: ABSOLUTE SEPARATED STATE MATCHING GATES
     // =========================================================================
     const isParameterizedGasButton = lowerMessage.startsWith('gas-type-') || lowerMessage.startsWith('gas-unit-');
-
     if (isParameterizedGasButton || ['gas-type-1', 'gas-type-2', 'gas-unit-1', 'gas-unit-2', 'gas-unit-3', 'gas-unit-4'].includes(lowerMessage)) {
-        console.log(`🛡️ [State Router Safety Rescue] Intercepted stateless interactive gas string "${lowerMessage}". Executing direct handleGasWorkflow pass...`);
         return await handleGasWorkflow(sharedContext);
     }
 
-    // =========================================================================
-    // BRANCH A: ABSOLUTE SEPARATED STATE MATCHING GATES (Prevents progression leakage)
-    // =========================================================================
     if (currentState === 'AWAITING_VEHICLE_DISTANCE' || currentState === 'AWAITING_VEHICLE_SELECTION') {
         return await handleVehicleWorkflow(sharedContext);
     }
@@ -59,7 +53,7 @@ export async function processConversationState(contextPayload) {
         return await handleFlightWorkflow(sharedContext);
     }
 
-    if (currentState === 'AWAITING_POWER_KWH' || currentState === 'AWAITING_POWER_COUNTRY' || currentState === 'AWAITING_POWER_SOURCE') {
+    if (currentState === 'AWAITING_POWER_KWH' || currentState === 'AWAITING_POWER_SOURCE') {
         return await handleElectricityWorkflow(sharedContext);
     }
 
@@ -72,7 +66,7 @@ export async function processConversationState(contextPayload) {
     }
 
     // =========================================================================
-    // BRANCH B: CALCULATOR SUB-MENU INTERCEPT GATES (Saves states immediately)
+    // BRANCH B: CALCULATOR SUB-MENU INTERCEPT GATES
     // =========================================================================
     if (currentState === 'INSIDE_CALCULATOR_SUBMENU') {
         const cleanChoice = String(lowerMessage || '').trim().toLowerCase();
@@ -87,9 +81,9 @@ export async function processConversationState(contextPayload) {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
             return true;
         }
+        // FIXED: Re-mapped the launch parameter argument string value to an isolated token to stop calculation jumps
         if (cleanChoice === 'calc_opt_3' || cleanChoice === '3') {
-            await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_FLIGHT_PASSENGERS', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
-            await handleFlightWorkflow({ ...sharedContext, currentState: 'LAUNCH_FLIGHT_WIZARD_PROMPT' });
+            await handleTaxWorkflow({ ...sharedContext, lowerMessage: 'launch_tax_period_menu', currentState: 'INSIDE_CALCULATOR_SUBMENU' });
             return true;
         }
         if (cleanChoice === 'calc_opt_4' || cleanChoice === '4') {

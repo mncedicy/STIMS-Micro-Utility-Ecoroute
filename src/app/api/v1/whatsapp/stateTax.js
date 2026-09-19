@@ -4,14 +4,11 @@ import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClien
 import { emailPdfReport } from '@/app/actions/email';
 import { compileTaxLedgerReport } from './taxCalculations';
 
-/**
- * Handles conversational routing steps for the SARS carbon compliance audit tracker wizards.
- */
 export async function handleTaxWorkflow(contextPayload) {
     const { lowerMessage, userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, currentState, pendingPayload } = contextPayload;
     const choice = String(lowerMessage || '').trim().toLowerCase();
 
-    // Main Menu global escape hatches
+    // Check escape hatches to main menu
     if (['menu', 'main menu', 'exit', 'cancel'].includes(choice)) {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         return false;
@@ -54,9 +51,8 @@ export async function handleTaxWorkflow(contextPayload) {
     // =========================================================================
     // STEP 1: CALCULATE COMPLIANCE DATA OVER SELECTED WINDOW TIMEFRAME
     // =========================================================================
-    if (currentState === 'AWAITING_TAX_PERIOD' || ['1', '2', '3', '4', '5', '6', 'tax_opt_1', 'tax_opt_2', 'tax_opt_3', 'tax_opt_4', 'tax_opt_5', 'tax_opt_6'].includes(choice)) {
-
-        // Outsource processing data manipulation calculations to the clean dedicated module
+    // FIXED: Enforce absolute isolation by confirming state flag isn't entering from the sub-menu layout launch trigger
+    if (currentState === 'AWAITING_TAX_PERIOD' && choice !== 'launch_tax_period_menu') {
         const report = await compileTaxLedgerReport(choice, userProfile.id, supabaseAdmin);
 
         if (!report.success) {
@@ -80,7 +76,6 @@ export async function handleTaxWorkflow(contextPayload) {
             `• Taxable Carbon Mass: *${report.taxableVolumeMt.toFixed(4)} MT*\n` +
             `• *Total Accrued Liability: R ${report.accruedLiabilityZar.toFixed(2)} ZAR*`;
 
-        // FIXED: Conditional evaluation hides button array elements when entries count equals zero
         if (report.totalEntries === 0) {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             promptBodyText += `\n\nℹ️ _No transaction logs recorded inside this specific calendar window frame. Export disabled._`;
@@ -88,7 +83,6 @@ export async function handleTaxWorkflow(contextPayload) {
             return true;
         }
 
-        // Lock database row parameters state ahead of button elements interactive distribution
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
             current_whatsapp_state: 'AWAITING_TAX_REPORT_ACTION',
             pending_whatsapp_payload: { startDate: report.startIso, endDate: report.endIso }
@@ -103,9 +97,9 @@ export async function handleTaxWorkflow(contextPayload) {
     }
 
     // =========================================================================
-    // INITIAL ACCESSIBILITY HUB OPEN SELECTION TRIGGER CARD
+    // INITIAL TIME-FRAME SELECTION MENU DISPATCHER (Launches Popup Selector cleanly)
     // =========================================================================
-    if (choice === 'calc_opt_3' || choice === '3') {
+    if (choice === 'launch_tax_period_menu' || choice === 'calc_opt_3' || choice === '3') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_TAX_PERIOD', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
 
         await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, {
