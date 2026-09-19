@@ -14,7 +14,6 @@ import { handleTaxWorkflow } from './stateTax';
  * Enforces absolute separation between phase steps to prevent cross-condition parameter leakages.
  */
 export async function processConversationState(contextPayload) {
-    // Destructure all active variables uniformly from the incoming context payload envelope
     const lowerMessage = String(contextPayload?.lowerMessage || '').trim().toLowerCase();
     const currentState = contextPayload?.tokenRecord?.current_whatsapp_state || null;
 
@@ -32,11 +31,11 @@ export async function processConversationState(contextPayload) {
     console.log(`📡 [State Engine Router] Evaluating isolated routing path for state: "${currentState}" | Input: "${lowerMessage}"`);
 
     // =========================================================================
-    // FIXED: STATELESS EMERGENCY RESCUE GATE SUPPORTING PARAMETERIZED PREFIX MATCHES
+    // FIXED: STATELESS EMERGENCY RESCUE GATE SUPPORTING HYPHENATED PREFIX MATCHES
     // =========================================================================
-    const isParameterizedGasButton = lowerMessage.startsWith('gas_type_') || lowerMessage.startsWith('gas_unit_');
+    const isParameterizedGasButton = lowerMessage.startsWith('gas-type-') || lowerMessage.startsWith('gas-unit-');
 
-    if (isParameterizedGasButton || ['gas_type_1', 'gas_type_2', 'gas_unit_1', 'gas_unit_2', 'gas_unit_3', 'gas_unit_4'].includes(lowerMessage)) {
+    if (isParameterizedGasButton || ['gas-type-1', 'gas-type-2', 'gas-unit-1', 'gas-unit-2', 'gas-unit-3', 'gas-unit-4'].includes(lowerMessage)) {
         console.log(`🛡️ [State Router Safety Rescue] Intercepted stateless interactive gas string "${lowerMessage}". Executing direct handleGasWorkflow pass...`);
         return await handleGasWorkflow(sharedContext);
     }
