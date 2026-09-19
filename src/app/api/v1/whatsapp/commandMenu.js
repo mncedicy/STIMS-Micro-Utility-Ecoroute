@@ -1,131 +1,103 @@
-// src/app/api/v1/whatsapp/commandMenu.js
+// src/app/api/v1/whatsapp/commandState.js
 
-import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClient';
+import { sendMetaWhatsappMessage } from './metaClient';
 import { handleVehicleWorkflow } from './stateVehicle';
+import { handleShippingWorkflow } from './stateShipping';
+import { handleFlightWorkflow } from './stateFlight';
+import { handleElectricityWorkflow } from './stateElectricity';
+import { handleGasWorkflow } from './stateGas';
+import { handleRouteWorkflow } from './stateRoute';
 import { handleTaxWorkflow } from './stateTax';
 
-export async function displayWhatsappMainMenu({
-    incomingMessage,
-    userProfile,
-    tokenRecord,
-    availableBalanceCents = 0,
-    customVehicles = [],
-    businessPhoneNumberId,
-    cleanPhoneNumber,
-    incomingServerUrl,
-    subscriptionRecord,
-    supabaseAdmin
-}) {
-    const cleanInput = String(incomingMessage || '').trim().toLowerCase();
-    const currentSubStatus = String(subscriptionRecord?.status || 'free').toLowerCase();
-    const isFreeTier = currentSubStatus !== 'active';
-    const firstName = userProfile?.first_name || 'Partner';
-    const companyName = userProfile?.company ? ` (${userProfile.company})` : '';
-    const availableZar = availableBalanceCents / 100;
+/**
+ * Master State Router: Isolates and directs traffic based on active state string tokens.
+ */
+export async function processConversationState(contextPayload) {
+    const lowerMessage = String(contextPayload?.lowerMessage || '').trim().toLowerCase();
+    const currentState = contextPayload?.tokenRecord?.current_whatsapp_state || null;
 
-    const mockTokenQuery = { data: tokenRecord };
-    const mockProfRes = { data: userProfile };
+    const userProfile = contextPayload?.userProfile;
+    const tokenRecord = contextPayload?.tokenRecord;
+    const businessPhoneNumberId = contextPayload?.businessPhoneNumberId;
+    const cleanPhoneNumber = contextPayload?.cleanPhoneNumber;
+    const supabaseAdmin = contextPayload?.supabaseAdmin;
+    const activeVehicles = contextPayload?.activeVehicles;
+    const incomingServerUrl = contextPayload?.incomingServerUrl;
+
+    const pendingPayload = tokenRecord?.pending_whatsapp_payload || {};
+    const sharedContext = { ...contextPayload, currentState, pendingPayload };
+
+    console.log(`📡 [State Engine Router] Evaluating isolated routing path for state: "${currentState}" | Input: "${lowerMessage}"`);
+
+    // FIXED: Capture and hand over both vehicle calculator steps and asset dashboard list views smoothly
+    if (
+        currentState === 'AWAITING_VEHICLE_DISTANCE' ||
+        currentState === 'AWAITING_VEHICLE_SELECTION' ||
+        currentState === 'AWAITING_FLEET_DASHBOARD_SELECTION' ||
+        currentState === 'AWAITING_FLEET_REPORT_EMAIL' ||
+        lowerMessage.startsWith('fleet_dash_id_') ||
+        lowerMessage.startsWith('email-veh-')
+    ) {
+        return await handleVehicleWorkflow(sharedContext);
+    }
+
+    if (currentState === 'AWAITING_SHIPPING_WEIGHT' || currentState === 'AWAITING_SHIPPING_DISTANCE' || currentState === 'AWAITING_SHIPPING_MODE') {
+        return await handleShippingWorkflow(sharedContext);
+    }
+
+    if (currentState === 'AWAITING_ROUTE_DISTANCE' || currentState === 'AWAITING_ROUTE_VEHICLE') {
+        return await handleRouteWorkflow(sharedContext);
+    }
+
+    if (currentState === 'AWAITING_FLIGHT_PASSENGERS' || currentState === 'AWAITING_FLIGHT_ORIGIN' || currentState === 'AWAITING_FLIGHT_DEST') {
+        return await handleFlightWorkflow(sharedContext);
+    }
+
+    if (currentState === 'AWAITING_POWER_KWH' || currentState === 'AWAITING_POWER_SOURCE') {
+        return await handleElectricityWorkflow(sharedContext);
+    }
+
+    if (currentState === 'AWAITING_GAS_QTY' || currentState === 'AWAITING_GAS_TYPE' || currentState === 'AWAITING_GAS_UNIT' || lowerMessage.startsWith('gas-type-') || lowerMessage.startsWith('gas-unit-')) {
+        return await handleGasWorkflow(sharedContext);
+    }
+
+    if (currentState === 'AWAITING_TAX_PERIOD' || currentState === 'AWAITING_TAX_REPORT_ACTION') {
+        return await handleTaxWorkflow(sharedContext);
+    }
 
     // =========================================================================
-    // EXCLUSIVE NATIVE COMPONENT BUTTON INTERCEPT ROUTERS
+    // BRANCH B: CALCULATOR SUB-MENU INTERCEPT GATES
     // =========================================================================
-    if (cleanInput === 'menu_option_1' || cleanInput === '1') {
-        // Forward directly to vehicle workflow to launch the list picker natively without text duplicates
-        await handleVehicleWorkflow({
-            lowerMessage: 'LAUNCH_CALCULATOR_LIST_MENU', userProfile, tokenRecord, currentUsage: tokenRecord?.current_monthly_usage || 0,
-            usageCap: tokenRecord?.usage_limit_cap || 100, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin,
-            appMetaRes: null, activeVehicles: [], mockTokenQuery, mockProfRes, currentState: null, pendingPayload: {}
-        });
-        return;
-    }
+    if (currentState === 'INSIDE_CALCULATOR_SUBMENU') {
+        const cleanChoice = String(lowerMessage || '').trim().toLowerCase();
 
-    if (cleanInput === 'menu_option_2' || cleanInput === '2') {
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_ROUTE_DISTANCE', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `🗺️ *2. ROUTE CHECKER WIZARD RUN* \n\nPlease type the terrestrial distance path length:\n\n*ROUTE TOTAL DISTANCE (KM)*`);
-        return;
-    }
-
-    if (cleanInput === 'menu_option_3' || cleanInput === '3') {
-        // Forward directly to tax sub-module to load native period ranges options popup panel natively
-        await handleTaxWorkflow({
-            lowerMessage: '3', userProfile, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin,
-            currentState: null, incomingServerUrl, pendingPayload: {}
-        });
-        return;
-    }
-
-    if (cleanInput === 'menu_option_4' || cleanInput === '4') {
-        let text = `💰 *4. REFERRALS EARNING BASES* 💰\n\n• Unpaid Wallet Balance: *R${availableZar.toFixed(2)} ZAR*\n\n`;
-        text += availableZar >= 100 ? `👉 *Reply with "withdraw"* to trigger cashout.` : `ℹ️ _Note: A minimum of R100.00 is required to trigger cashout._`;
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, text);
-        return;
-    }
-
-    if (cleanInput === 'menu_option_5' || cleanInput === '5') {
-        let text = `🚛 *5. REGISTERED FLEET ASSET NODES* \n\n`;
-        if (customVehicles.length > 0) {
-            customVehicles.forEach((veh) => {
-                text += `• ${String(veh.registration_number || 'FLEET').toUpperCase()} - ${String(veh.make || 'ASSET').toUpperCase()}\n`;
-            });
-        } else {
-            text += `ℹ️ No active fleet assets linked to your corporate sustainability profiles.`;
+        if (cleanChoice === 'calc_opt_1' || cleanChoice === '1') {
+            await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_VEHICLE_DISTANCE', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *VEHICLE AUDIT SETUP* \n\nPlease type the total trip travel path: \n\n*DISTANCE (KM)*");
+            return true;
         }
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, text);
-        return;
-    }
-
-    if (cleanInput === 'menu_option_6' || cleanInput === '6') {
-        if (!isFreeTier) return;
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⏳ Connecting to checkout gateways...`);
-        try {
-            const hostUrl = incomingServerUrl || 'https://stims.co.za';
-            const apiRes = await fetch(`${hostUrl}/api/checkout/initialize`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: userProfile.id, userEmail: userProfile.email || '', callbackUrl: `${hostUrl}` }) });
-            const result = await apiRes.json();
-            if (result.success && result.url) {
-                await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⭐ *UPGRADE TO PRO PLAN* ⭐\n\n🔗 ${result.url}`);
-            } else {
-                throw new Error(result.error || "Gateway timeout.");
-            }
-        } catch (err) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `❌ Checkout Error: ${err.message}`);
+        if (cleanChoice === 'calc_opt_2' || cleanChoice === '2') {
+            await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_SHIPPING_WEIGHT', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
+            return true;
         }
-        return;
-    }
-
-    // =========================================================================
-    // NATIVE LIST LAYOUT GENERATION - REMOVED LEGACY HINT STRINGS ENTIRELY
-    // =========================================================================
-    const rowsArray = [
-        { id: "menu_option_1", title: "📊 Audit Calculator", description: "Compute Scope 1 & 2 emissions vectors" },
-        { id: "menu_option_2", title: "🗺️ Route Checker", description: "Track optimized terrestrial travel paths" },
-        { id: "menu_option_3", title: "🏛️ Tax Report", description: "Extract statutory SARS carbon compliance cards" },
-        { id: "menu_option_4", title: "💰 Referrals Ledger", description: "Inspect accumulated unpaid referral wallet values" },
-        { id: "menu_option_5", title: "🚛 Fleet Assets", description: "View registered vehicle node matrices" }
-    ];
-
-    if (isFreeTier) {
-        rowsArray.push({ id: "menu_option_6", title: "⭐ Subscribe Pro Plan", description: "Unlock premium corporate resource limits" });
-    }
-
-    let pureUIMenuBody = `✨ *Hello, ${firstName}!* ${companyName} ✨\nWelcome to your EcoRoute WhatsApp Control Hub.\n\n`;
-    pureUIMenuBody += `Tap the button below to display accessibility options and configure your corporate carbon profile settings instantly.`;
-
-    const nativeListPayload = {
-        type: "list",
-        header: { type: "text", text: "EcoRoute Control Panel" },
-        body: { text: pureUIMenuBody },
-        action: {
-            button: "Open Menu Panel",
-            sections: [
-                {
-                    title: "MAIN WORKSPACE CONTROLS",
-                    rows: rowsArray
-                }
-            ]
+        if (cleanChoice === 'calc_opt_3' || cleanChoice === '3') {
+            await handleTaxWorkflow({ ...sharedContext, lowerMessage: 'launch_tax_period_menu', currentState: 'INSIDE_CALCULATOR_SUBMENU' });
+            return true;
         }
-    };
+        if (cleanChoice === 'calc_opt_4' || cleanChoice === '4') {
+            await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_POWER_KWH', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *ELECTRICITY AUDIT SETUP* \n\nPlease input total energy utilization:\n\n*METRICS VOLUME (KWH)*");
+            return true;
+        }
+        if (cleanChoice === 'calc_opt_5' || cleanChoice === '5') {
+            await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_GAS_QTY', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
+            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *GAS COMBUSTION SETUP* \n\nPlease enter the total fuel volume burned:\n\n*QUANTITY CAPACITY AMOUNT*");
+            return true;
+        }
 
+        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
+    }
 
-    console.log(`📡 Dispatching pure touch-driven list menu panel back to user phone client.`);
-    await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeListPayload);
+    return false;
 }

@@ -1,144 +1,45 @@
 // src/app/api/v1/whatsapp/stateVehicle.js
 
-import { processCategoryEmissions } from '@/app/api/estimates/categoryPipeline';
-import { formatEmissionPayload } from '@/app/utils/massFormatter';
-import { runEmissionsPipeline } from '@/app/api/estimates/pipelineService';
-import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClient';
-import { buildAuditCardString } from './messageTemplates';
+import { sendMetaWhatsappMessage } from './metaClient';
+import { executeVehicleCalculationStep } from './vehicleCalculator';
+import { executeVehicleDashboardStep } from './vehicleDashboard';
 
-export async function handleVehicleWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
+/**
+ * Handles conversational routing steps for the Vehicle Calculator and Fleet Asset options.
+ */
+export async function handleVehicleWorkflow(contextPayload) {
+    const { lowerMessage, tokenRecord, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin } = contextPayload;
+    const choice = String(lowerMessage || '').trim();
+    const normalizedInputToken = choice.toLowerCase();
+    const currentState = tokenRecord?.current_whatsapp_state || null;
 
-    const normalizedInputToken = String(lowerMessage || '').trim().toLowerCase();
-
-    // =========================================================================
-    // STEP 3: USER TAP-SELECTED A SPECIFIC NATIVE VEHICLE ASSET ROW ITEM
-    // =========================================================================
-    if (currentState === 'AWAITING_VEHICLE_SELECTION') {
-        const choice = lowerMessage.trim();
-        let selectedVehicle = null;
-
-        if (choice.startsWith('veh_row_id_')) {
-            const targetUuid = choice.replace('veh_row_id_', '');
-            selectedVehicle = (activeVehicles || []).find(v => v.id === targetUuid);
-        } else {
-            const vehicleIndex = parseInt(choice, 10) - 1;
-            if (!isNaN(vehicleIndex) && vehicleIndex >= 0 && vehicleIndex < (activeVehicles?.length || 0)) {
-                selectedVehicle = activeVehicles[vehicleIndex];
-            }
-        }
-
-        if (!selectedVehicle) {
-            console.warn(`⚠️ [stateVehicle Selection Checkpoint Mismatch] Input value "${choice}" did not match any active vehicle UUID vectors.`);
-            return true;
-        }
-
-        const targetDistance = pendingPayload?.distance;
-        const vehicleId = selectedVehicle.id;
-
+    // Global Menu escape hatches
+    if (['menu', 'main menu', 'exit', 'cancel'].includes(normalizedInputToken)) {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⚙️ Processing calculator run for vehicle: ${selectedVehicle.registration_number || 'FLEET'}...`);
-
-        const form = { type: 'vehicle', distance: targetDistance.toString(), unit: 'km', vehicle_id: vehicleId, save_log: true };
-        const { calculatedKg, metadataLog } = await processCategoryEmissions('vehicle', form, tokenRecord?.api_token || '');
-        const payload = formatEmissionPayload(calculatedKg);
-
-        await runEmissionsPipeline({ user: { id: userProfile.id }, cleanType: 'vehicle', body: form, conversionsPayload: payload, metadataLog, appMetaRes, tokenQuery: mockTokenQuery, profRes: mockProfRes, currentUsageCount: currentUsage, logSourceChannel: 'WHATSAPP_META_TUNNEL' });
-        await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, buildAuditCardString(userProfile.first_name, `Vehicle: ${metadataLog?.vehicleProfile || selectedVehicle.registration_number}`, `${targetDistance} KM`, payload, usageCap, currentUsage));
-        return true;
+        return false;
     }
 
     // =========================================================================
-    // STEP 2: USER TYPED THE NUMERIC DISTANCE VALUE PATH
+    // ROUTE OPTION A: FLEET MANAGEMENT WORKFLOW VIEWS (Option 5 Lifecycle)
     // =========================================================================
-    if (currentState === 'AWAITING_VEHICLE_DISTANCE') {
-        const numericDistance = parseFloat(lowerMessage);
-        if (isNaN(numericDistance) || numericDistance <= 0) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid distance entry. Please input a positive numerical amount in KM (e.g., 45):");
-            return true;
-        }
-
-        let fleetAssetsList = activeVehicles || [];
-        if (!fleetAssetsList || fleetAssetsList.length === 0) {
-            const { data: dbRows } = await supabaseAdmin
-                .from('ecoroute_vehicles')
-                .select('id, registration_number, make, model, is_active')
-                .eq('user_id', userProfile.id);
-
-            fleetAssetsList = (dbRows || []).filter(v => v.is_active !== false);
-        }
-
-        if (fleetAssetsList.length === 0) {
-            await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "ℹ️ Aborted: No active vehicles linked to your EcoRoute profile. Link an asset inside your web dashboard panel first.");
-            await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
-            return true;
-        }
-
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
-            current_whatsapp_state: 'AWAITING_VEHICLE_SELECTION',
-            pending_whatsapp_payload: { distance: numericDistance }
-        }).eq('id', tokenRecord.id);
-
-        const nativeFleetRows = fleetAssetsList.map((veh, index) => {
-            const rawReg = String(veh.registration_number || 'FLEET').toUpperCase();
-            const rawMake = String(veh.make || 'ASSET').toUpperCase();
-            const rawModel = String(veh.model || 'NODE').toUpperCase();
-
-            // Truncate cleanly to protect Meta row length boundaries
-            const cleanTitle = `${index + 1} — ${rawReg}`.substring(0, 24);
-            const cleanDesc = `${rawMake} [${rawModel}]`.substring(0, 72);
-
-            return {
-                id: `veh_row_id_${veh.id}`,
-                title: cleanTitle,
-                description: cleanDesc
-            };
-        });
-
-        const nativeFleetListPayload = {
-            type: "list",
-            header: { type: "text", text: "🚛 SELECT VEHICLE REGISTRY 1" },
-            body: { text: "Choose an active fleet profile asset from your registered dashboard list down below to complete your emissions run:" },
-            action: {
-                button: "Select Asset Row",
-                // FIXED: Shortened section title to 'AUTHORIZED FLEET' (16 chars) to fall safely under Meta's 24 character maximum constraint rule bounds
-                sections: [{ title: "AUTHORIZED FLEET", rows: nativeFleetRows }]
-            }
-        };
-
-        await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeFleetListPayload);
-        return true;
+    if (
+        currentState === 'AWAITING_FLEET_DASHBOARD_SELECTION' ||
+        currentState === 'AWAITING_FLEET_REPORT_EMAIL' ||
+        normalizedInputToken.startsWith('fleet_dash_id_') ||
+        normalizedInputToken.startsWith('email-veh-')
+    ) {
+        return await executeVehicleDashboardStep(contextPayload);
     }
 
     // =========================================================================
-    // STEP 1: CALCULATOR SUB-MENU SELECTION GRID INITIALIZATION
+    // ROUTE OPTION B: EMISSIONS CALCULATOR WORKFLOW VIEWS (Option 1 Lifecycle)
     // =========================================================================
-    if (normalizedInputToken === 'launch_calculator_list_menu') {
-        await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'INSIDE_CALCULATOR_SUBMENU', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
-
-        const nativeCalcList = {
-            type: "list",
-            header: { type: "text", text: "Emissions Carbon Trackers" },
-            body: { text: "Select an active emissions category from the selector panel below to start your calculator run:" },
-            action: {
-                button: "Select Category",
-                sections: [
-                    {
-                        // FIXED: Shortened section title parameter to stay under Meta's 24 character constraint rule bounds
-                        title: "TRACKER CATEGORIES",
-                        rows: [
-                            { id: "calc_opt_1", title: "🚛 Vehicle Audit", description: "Terrestrial fleet transit and fuel burn logs" },
-                            { id: "calc_opt_2", title: "📦 Cargo Shipping", description: "Freight consignment log weight and lengths" },
-                            { id: "calc_opt_3", title: "✈️ Flight Aviation", description: "Passenger volume airport terminal codes" },
-                            { id: "calc_opt_4", title: "⚡ Electricity Utility", description: "Scope 2 grid region consumption tallies" },
-                            { id: "calc_opt_5", title: "🔥 Gas Stationary", description: "Scope 1 stationary fuel burner elements" }
-                        ]
-                    }
-                ]
-            }
-        };
-
-        await sendMetaInteractiveMessage(businessPhoneNumberId, cleanPhoneNumber, nativeCalcList);
-        return true;
+    if (
+        currentState === 'AWAITING_VEHICLE_DISTANCE' ||
+        currentState === 'AWAITING_VEHICLE_SELECTION' ||
+        normalizedInputToken === 'launch_calculator_list_menu'
+    ) {
+        return await executeVehicleCalculationStep(contextPayload);
     }
 
     return false;
