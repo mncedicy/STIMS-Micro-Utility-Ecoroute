@@ -11,6 +11,7 @@ import { handleTaxWorkflow } from './stateTax';
 
 /**
  * Master State Router: Isolates and directs conversational traffic based on the active state string token.
+ * Enforces absolute separation between phase steps to prevent cross-condition parameter leakages.
  */
 export async function processConversationState(contextPayload) {
     const lowerMessage = String(contextPayload?.lowerMessage || '').trim().toLowerCase();
@@ -27,7 +28,22 @@ export async function processConversationState(contextPayload) {
     const pendingPayload = tokenRecord?.pending_whatsapp_payload || {};
     const sharedContext = { ...contextPayload, currentState, pendingPayload };
 
-    console.log(`📡 [State Engine Router] Evaluating isolated routing path for state: "${currentState}" | Input: "${lowerMessage}"`);
+    console.log(`📡 [State Engine Router Master Check] State: "${currentState}" | Input: "${lowerMessage}"`);
+
+    // =========================================================================
+    // FIXED: ROOT-LEVEL ABSOLUTE BYPASS INTERCEPT FOR STATELESS VEHICLE ASSETS
+    // =========================================================================
+    if (
+        lowerMessage.startsWith('fleet_dash_id_') ||
+        lowerMessage.startsWith('email-veh-') ||
+        currentState === 'AWAITING_FLEET_DASHBOARD_SELECTION' ||
+        currentState === 'AWAITING_FLEET_REPORT_EMAIL'
+    ) {
+        console.log(`🛡️ [CRITICAL INTERCEPT BYPASS] Captured fleet component key. Halting fall-through loops immediately.`);
+        // Await the vehicle sub-module execution block completely before closing out the thread frame
+        await handleVehicleWorkflow(sharedContext);
+        return true; // FIXED: Root propagated exit code explicitly force-stops calculation macro parsers
+    }
 
     // =========================================================================
     // BRANCH A: ABSOLUTE SEPARATED STATE MATCHING GATES
@@ -81,7 +97,6 @@ export async function processConversationState(contextPayload) {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
             return true;
         }
-        // FIXED: Re-mapped the launch parameter argument string value to an isolated token to stop calculation jumps
         if (cleanChoice === 'calc_opt_3' || cleanChoice === '3') {
             await handleTaxWorkflow({ ...sharedContext, lowerMessage: 'launch_tax_period_menu', currentState: 'INSIDE_CALCULATOR_SUBMENU' });
             return true;
