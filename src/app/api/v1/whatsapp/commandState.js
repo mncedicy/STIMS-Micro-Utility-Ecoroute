@@ -14,7 +14,7 @@ import { handleTaxWorkflow } from './stateTax';
  * Enforces absolute separation between phase steps to prevent cross-condition parameter leakages.
  */
 export async function processConversationState(contextPayload) {
-    // FIXED: Destructure all active variables uniformly from the incoming context payload envelope
+    // Destructure all active variables uniformly from the incoming context payload envelope
     const lowerMessage = String(contextPayload?.lowerMessage || '').trim().toLowerCase();
     const currentState = contextPayload?.tokenRecord?.current_whatsapp_state || null;
 
@@ -32,10 +32,12 @@ export async function processConversationState(contextPayload) {
     console.log(`📡 [State Engine Router] Evaluating isolated routing path for state: "${currentState}" | Input: "${lowerMessage}"`);
 
     // =========================================================================
-    // FIXED: EMERGENCY SELF-HEALING RECOVERY GATE FOR RESILIENT GAS ROUTING
+    // FIXED: STATELESS EMERGENCY RESCUE GATE SUPPORTING PARAMETERIZED PREFIX MATCHES
     // =========================================================================
-    if (lowerMessage === 'gas_type_1' || lowerMessage === 'gas_type_2' || lowerMessage === 'gas_unit_1' || lowerMessage === 'gas_unit_2' || lowerMessage === 'gas_unit_3' || lowerMessage === 'gas_unit_4') {
-        console.log(`🛡️ [State Router Safety Rescue] Intercepted explicit interactive gas button click ID "${lowerMessage}" under active state context "${currentState}". Forcing direct handleGasWorkflow handover loop...`);
+    const isParameterizedGasButton = lowerMessage.startsWith('gas_type_') || lowerMessage.startsWith('gas_unit_');
+
+    if (isParameterizedGasButton || ['gas_type_1', 'gas_type_2', 'gas_unit_1', 'gas_unit_2', 'gas_unit_3', 'gas_unit_4'].includes(lowerMessage)) {
+        console.log(`🛡️ [State Router Safety Rescue] Intercepted stateless interactive gas string "${lowerMessage}". Executing direct handleGasWorkflow pass...`);
         return await handleGasWorkflow(sharedContext);
     }
 
@@ -74,27 +76,29 @@ export async function processConversationState(contextPayload) {
     // BRANCH B: CALCULATOR SUB-MENU INTERCEPT GATES (Saves states immediately)
     // =========================================================================
     if (currentState === 'INSIDE_CALCULATOR_SUBMENU') {
-        if (lowerMessage === 'calc_opt_1' || lowerMessage === '1') {
+        const cleanChoice = String(lowerMessage || '').trim().toLowerCase();
+
+        if (cleanChoice === 'calc_opt_1' || cleanChoice === '1') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_VEHICLE_DISTANCE', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *VEHICLE AUDIT SETUP* \n\nPlease type the total trip travel path: \n\n*DISTANCE (KM)*");
             return true;
         }
-        if (lowerMessage === 'calc_opt_2' || lowerMessage === '2') {
+        if (cleanChoice === 'calc_opt_2' || cleanChoice === '2') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_SHIPPING_WEIGHT', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
             return true;
         }
-        if (lowerMessage === 'calc_opt_3' || lowerMessage === '3') {
+        if (cleanChoice === 'calc_opt_3' || cleanChoice === '3') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_FLIGHT_PASSENGERS', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await handleFlightWorkflow({ ...sharedContext, currentState: 'LAUNCH_FLIGHT_WIZARD_PROMPT' });
             return true;
         }
-        if (lowerMessage === 'calc_opt_4' || lowerMessage === '4') {
+        if (cleanChoice === 'calc_opt_4' || cleanChoice === '4') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_POWER_KWH', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *ELECTRICITY AUDIT SETUP* \n\nPlease input total energy utilization:\n\n*METRICS VOLUME (KWH)*");
             return true;
         }
-        if (lowerMessage === 'calc_opt_5' || lowerMessage === '5') {
+        if (cleanChoice === 'calc_opt_5' || cleanChoice === '5') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_GAS_QTY', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *GAS COMBUSTION SETUP* \n\nPlease enter the total fuel volume burned:\n\n*QUANTITY CAPACITY AMOUNT*");
             return true;

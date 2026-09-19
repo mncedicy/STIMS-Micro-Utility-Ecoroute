@@ -6,33 +6,40 @@ import { runEmissionsPipeline } from '@/app/api/estimates/pipelineService';
 import { sendMetaWhatsappMessage, sendMetaInteractiveMessage } from './metaClient';
 import { buildAuditCardString } from './messageTemplates';
 
-export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, mockTokenQuery, mockProfRes, currentState, pendingPayload }) {
+/**
+ * Handles the Gas Combustion workflow using stateless parameterized action strings
+ * to guarantee resilience against asynchronous database table state leaks.
+ */
+export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, mockTokenQuery, mockProfRes, currentState }) {
 
     const choice = String(lowerMessage || '').trim().toLowerCase();
 
-    // Global escape hatches to main menu control panel layer
+    // Check escape hatches to main menu control panel layer
     if (['menu', 'main menu', 'exit', 'cancel'].includes(choice)) {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         return false;
     }
 
     // =========================================================================
-    // STEP 3: USER SELECTED THE MEASUREMENT UNIT (m3, kWh, liter, kg)
+    // STEP 3: USER SELECTED THE MEASUREMENT UNIT (Stateless Parameter Unpacking)
     // =========================================================================
-    if (currentState === 'AWAITING_GAS_UNIT') {
-        const unitsMap = {
-            "gas_unit_1": "m3", "gas_unit_2": "kwh", "gas_unit_3": "liter", "gas_unit_4": "kg",
-            "1": "m3", "2": "kwh", "3": "liter", "4": "kg"
-        };
-        const selectedUnit = unitsMap[choice];
+    if (currentState === 'AWAITING_GAS_UNIT' || choice.startsWith('gas_unit_')) {
+        // Expected format structure: gas_unit_[index]_[type]_[qty] (e.g., gas_unit_2_natural_gas_45)
+        const tokenParts = choice.split('_');
+
+        const unitsMap = { "1": "m3", "2": "kwh", "3": "liter", "4": "kg" };
+        const selectedUnit = unitsMap[tokenParts[2]] || tokenRecord?.pending_whatsapp_payload?.gas_unit;
 
         if (!selectedUnit) {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid selection. Please use the menu panel below to select a valid unit.");
             return true;
         }
 
-        const finalQty = pendingPayload?.quantity || 1;
-        const finalType = pendingPayload?.gas_type || 'NATURAL_GAS';
+        // Unpack parameters natively from the token string split matrix
+        const finalType = String(tokenParts[3] || tokenRecord?.pending_whatsapp_payload?.gas_type || 'NATURAL_GAS').toUpperCase();
+        const finalQty = parseFloat(tokenParts[4] || tokenRecord?.pending_whatsapp_payload?.quantity || 1);
+
+        console.log(`🏁 [stateGas Final Step] Stateless Computation: Qty=${finalQty} | Type=${finalType} | Unit=${selectedUnit}`);
 
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null, pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
         await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, `⚙️ Computing Scope 1 gas combustion carbon metrics...`);
@@ -47,25 +54,27 @@ export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord
     }
 
     // =========================================================================
-    // STEP 2: USER SELECTED THE FUEL CLASSIFICATION TYPE (NATURAL GAS VS LPG)
+    // STEP 2: USER SELECTED THE FUEL TYPE (Stateless Parameter Unpacking)
     // =========================================================================
-    // FIXED: Added an explicit self-healing gate check so if state is null but button ID matches, we seamlessly recover
-    if (currentState === 'AWAITING_GAS_TYPE' || choice === 'gas_type_1' || choice === 'gas_type_2') {
-        if (choice !== 'gas_type_1' && choice !== 'gas_type_2' && choice !== '1' && choice !== '2') {
+    if (currentState === 'AWAITING_GAS_TYPE' || choice.startsWith('gas_type_')) {
+        // Expected format structure: gas_type_[index]_[qty] (e.g., gas_type_1_45)
+        const tokenParts = choice.split('_');
+        const activeIndex = tokenParts[2]; // "1" or "2"
+        const activeQty = parseFloat(tokenParts[3] || tokenRecord?.pending_whatsapp_payload?.quantity || 1);
+
+        if (activeIndex !== '1' && activeIndex !== '2') {
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "❌ Invalid selection. Please use the option buttons below to select the fuel type:");
             return true;
         }
 
-        const targetType = (choice === 'gas_type_1' || choice === '1') ? 'NATURAL_GAS' : 'LPG';
-
-        // Recover quantity from cache if database reset it to empty
-        const activeQty = pendingPayload?.quantity || tokenRecord?.pending_whatsapp_payload?.quantity || 1;
+        const targetType = activeIndex === '1' ? 'NATURAL_GAS' : 'LPG';
 
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
             current_whatsapp_state: 'AWAITING_GAS_UNIT',
             pending_whatsapp_payload: { quantity: activeQty, gas_type: targetType }
         }).eq('id', tokenRecord.id);
 
+        // FIXED: Embedded parameters inside the row IDs to pass context to Step 3 statelessly
         const nativeUnitListPayload = {
             type: "list",
             header: { type: "text", text: "🔥 SELECT GAS UNIT 🔥" },
@@ -76,10 +85,10 @@ export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord
                     {
                         title: "MEASUREMENT UNITS",
                         rows: [
-                            { id: "gas_unit_1", title: "Cubic Metres (m3)", description: "Volumetric measurement parameter" },
-                            { id: "gas_unit_2", title: "Kilowatt Hours (kWh)", description: "Energy capacity consumption metric" },
-                            { id: "gas_unit_3", title: "Liquid Litres", description: "Volumetric fluid capacity measure" },
-                            { id: "gas_unit_4", title: "Kilograms Weight (kg)", description: "Mass unit weight capacity parameter" }
+                            { id: `gas_unit_1_${targetType.toLowerCase()}_${activeQty}`, title: "Cubic Metres (m3)", description: "Volumetric measurement parameter" },
+                            { id: `gas_unit_2_${targetType.toLowerCase()}_${activeQty}`, title: "Kilowatt Hours (kWh)", description: "Energy capacity consumption metric" },
+                            { id: `gas_unit_3_${targetType.toLowerCase()}_${activeQty}`, title: "Liquid Litres", description: "Volumetric fluid capacity measure" },
+                            { id: `gas_unit_4_${targetType.toLowerCase()}_${activeQty}`, title: "Kilograms Weight (kg)", description: "Mass unit weight capacity parameter" }
                         ]
                     }
                 ]
@@ -91,7 +100,7 @@ export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord
     }
 
     // =========================================================================
-    // STEP 1: USER SUPPLIED FUEL COMBUSTION QUANTITY VOLUME AMOUNT
+    // STEP 1: USER SUPPLIED FUEL COMBUSTION QUANTITY
     // =========================================================================
     if (currentState === 'AWAITING_GAS_QTY') {
         const numericQty = parseFloat(lowerMessage);
@@ -105,13 +114,14 @@ export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord
             pending_whatsapp_payload: { quantity: numericQty }
         }).eq('id', tokenRecord.id);
 
+        // FIXED: Embedded the quantity parameter value directly inside the button IDs
         const nativeTypeButtonsPayload = {
             type: "button",
             body: { text: `🔥 *SELECT FUEL CLASSIFICATION TYPE* 🔥\n\nQuantity Captured: ${numericQty}\nChoose the burned fuel type by tapping an option below:` },
             action: {
                 buttons: [
-                    { type: "reply", reply: { id: "gas_type_1", title: "Natural Gas (Mains)" } },
-                    { type: "reply", reply: { id: "gas_type_2", title: "LPG (Bottled Gas)" } }
+                    { type: "reply", reply: { id: `gas_type_1_${numericQty}`, title: "Natural Gas (Mains)" } },
+                    { type: "reply", reply: { id: `gas_type_2_${numericQty}`, title: "LPG (Bottled Gas)" } }
                 ]
             }
         };
@@ -120,9 +130,7 @@ export async function handleGasWorkflow({ lowerMessage, userProfile, tokenRecord
         return true;
     }
 
-    // =========================================================================
     // INITIAL SUB-MENU LAUNCH ROUTINE
-    // =========================================================================
     if (choice === 'calc_opt_5' || choice === '5') {
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({
             current_whatsapp_state: 'AWAITING_GAS_QTY',
