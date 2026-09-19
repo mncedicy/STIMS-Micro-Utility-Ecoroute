@@ -13,13 +13,31 @@ import { handleTaxWorkflow } from './stateTax';
  * Master State Router: Isolates and directs conversational traffic based on the active state string token.
  * Enforces absolute separation between phase steps to prevent cross-condition parameter leakages.
  */
-export async function processConversationState({ lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, incomingServerUrl }) {
-    const currentState = tokenRecord?.current_whatsapp_state || null;
+export async function processConversationState(contextPayload) {
+    // FIXED: Destructure all active variables uniformly from the incoming context payload envelope
+    const lowerMessage = String(contextPayload?.lowerMessage || '').trim().toLowerCase();
+    const currentState = contextPayload?.tokenRecord?.current_whatsapp_state || null;
+
+    const userProfile = contextPayload?.userProfile;
+    const tokenRecord = contextPayload?.tokenRecord;
+    const businessPhoneNumberId = contextPayload?.businessPhoneNumberId;
+    const cleanPhoneNumber = contextPayload?.cleanPhoneNumber;
+    const supabaseAdmin = contextPayload?.supabaseAdmin;
+    const activeVehicles = contextPayload?.activeVehicles;
+    const incomingServerUrl = contextPayload?.incomingServerUrl;
+
     const pendingPayload = tokenRecord?.pending_whatsapp_payload || {};
+    const sharedContext = { ...contextPayload, currentState, pendingPayload };
 
-    const sharedContext = { lowerMessage, userProfile, tokenRecord, currentUsage, usageCap, businessPhoneNumberId, cleanPhoneNumber, supabaseAdmin, appMetaRes, activeVehicles, mockTokenQuery, mockProfRes, currentState, pendingPayload, incomingServerUrl };
+    console.log(`📡 [State Engine Router] Evaluating isolated routing path for state: "${currentState}" | Input: "${lowerMessage}"`);
 
-    console.log(`📡 [State Engine Router] Evaluating isolated routing path for state: "${currentState}"`);
+    // =========================================================================
+    // FIXED: EMERGENCY SELF-HEALING RECOVERY GATE FOR RESILIENT GAS ROUTING
+    // =========================================================================
+    if (lowerMessage === 'gas_type_1' || lowerMessage === 'gas_type_2' || lowerMessage === 'gas_unit_1' || lowerMessage === 'gas_unit_2' || lowerMessage === 'gas_unit_3' || lowerMessage === 'gas_unit_4') {
+        console.log(`🛡️ [State Router Safety Rescue] Intercepted explicit interactive gas button click ID "${lowerMessage}" under active state context "${currentState}". Forcing direct handleGasWorkflow handover loop...`);
+        return await handleGasWorkflow(sharedContext);
+    }
 
     // =========================================================================
     // BRANCH A: ABSOLUTE SEPARATED STATE MATCHING GATES (Prevents progression leakage)
@@ -44,7 +62,6 @@ export async function processConversationState({ lowerMessage, userProfile, toke
         return await handleElectricityWorkflow(sharedContext);
     }
 
-    // FIXED: Separated gas workflow states into highly explicit, independent matching check blocks
     if (currentState === 'AWAITING_GAS_QTY' || currentState === 'AWAITING_GAS_TYPE' || currentState === 'AWAITING_GAS_UNIT') {
         return await handleGasWorkflow(sharedContext);
     }
@@ -57,39 +74,32 @@ export async function processConversationState({ lowerMessage, userProfile, toke
     // BRANCH B: CALCULATOR SUB-MENU INTERCEPT GATES (Saves states immediately)
     // =========================================================================
     if (currentState === 'INSIDE_CALCULATOR_SUBMENU') {
-        const cleanChoice = String(lowerMessage || '').trim().toLowerCase();
-
-        if (cleanChoice === 'calc_opt_1' || cleanChoice === '1') {
+        if (lowerMessage === 'calc_opt_1' || lowerMessage === '1') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_VEHICLE_DISTANCE', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *VEHICLE AUDIT SETUP* \n\nPlease type the total trip travel path: \n\n*DISTANCE (KM)*");
             return true;
         }
-
-        if (cleanChoice === 'calc_opt_2' || cleanChoice === '2') {
+        if (lowerMessage === 'calc_opt_2' || lowerMessage === '2') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_SHIPPING_WEIGHT', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *SHIPPING AUDIT SETUP* \n\nPlease specify total freight consignment mass weight:\n\n*WEIGHT (TONNES)*");
             return true;
         }
-
-        if (cleanChoice === 'calc_opt_3' || cleanChoice === '3') {
+        if (lowerMessage === 'calc_opt_3' || lowerMessage === '3') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_FLIGHT_PASSENGERS', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await handleFlightWorkflow({ ...sharedContext, currentState: 'LAUNCH_FLIGHT_WIZARD_PROMPT' });
             return true;
         }
-
-        if (cleanChoice === 'calc_opt_4' || cleanChoice === '4') {
+        if (lowerMessage === 'calc_opt_4' || lowerMessage === '4') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_POWER_KWH', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *ELECTRICITY AUDIT SETUP* \n\nPlease input total energy utilization:\n\n*METRICS VOLUME (KWH)*");
             return true;
         }
-
-        if (cleanChoice === 'calc_opt_5' || cleanChoice === '5') {
+        if (lowerMessage === 'calc_opt_5' || lowerMessage === '5') {
             await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: 'AWAITING_GAS_QTY', pending_whatsapp_payload: {} }).eq('id', tokenRecord.id);
             await sendMetaWhatsappMessage(businessPhoneNumberId, cleanPhoneNumber, "✏️ *GAS COMBUSTION SETUP* \n\nPlease enter the total fuel volume burned:\n\n*QUANTITY CAPACITY AMOUNT*");
             return true;
         }
 
-        // Wipe conversational sub-menu state cleanly if unmatched text parameters are parsed
         await supabaseAdmin.from('ecoroute_corporate_api_tokens').update({ current_whatsapp_state: null }).eq('id', tokenRecord.id);
     }
 
