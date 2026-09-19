@@ -138,6 +138,7 @@ export async function displayWhatsappMainMenu({
         rowsArray.push({ id: "menu_option_6", title: "⭐ Subscribe Pro Plan", description: "Unlock premium corporate resource limits" });
     }
 
+
     let pureUIMenuBody = `✨ *Hello, ${firstName}!* ${companyName} ✨\nWelcome to your EcoRoute WhatsApp Control Hub.\n\n`;
     pureUIMenuBody += `Tap the button below to display accessibility options and configure your corporate carbon profile settings instantly.`;
 
