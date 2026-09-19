@@ -50,7 +50,7 @@ export async function executeVehicleDashboardStep(contextPayload) {
     }
 
     // =========================================================================
-    // STEP 1: RENDER VEHICLE METRICS SUMMARY CARD (MIRRORING IMAGE SPECIFICATIONS)
+    // STEP 1: RENDER VEHICLE METRICS SUMMARY CARD WITH DYNAMIC FUEL VOLUME CONSUMED
     // =========================================================================
     if (currentState === 'AWAITING_FLEET_DASHBOARD_SELECTION' || normalizedInputToken.startsWith('fleet_dash_id_')) {
         const targetVehicleUuid = choice.replace('fleet_dash_id_', '');
@@ -82,25 +82,31 @@ export async function executeVehicleDashboardStep(contextPayload) {
         const vehicleScore = parseFloat(vehicleNode?.carbon_score || 0.205053);
         const avgCarbonPerKm = totalKm > 0 ? (totalKg / totalKm) : vehicleScore;
 
+        // FIXED: Dynamically calculate total liquid fuel burned based on registered L/100km parameters (Default: 8.7 L/100km)
+        const fuelEconomyL100km = parseFloat(vehicleNode?.fuel_economy_l100km || 8.7);
+        const totalFuelUsedLitres = (totalKm * fuelEconomyL100km) / 100;
+
         const regName = String(vehicleNode?.registration_number || 'FLEET').toUpperCase();
         const makeName = String(vehicleNode?.make || 'VEHICLE').toUpperCase();
         const modelName = String(vehicleNode?.model || 'ASSET').toUpperCase();
         const fuelType = String(vehicleNode?.fuel_type || 'PREMIUM GASOLINE').toUpperCase();
         const engineSize = vehicleNode?.engine_size ? `${vehicleNode.engine_size}L` : '2.0L';
 
-        // Format layout panel string mirroring your snapshots perfectly
+        // Format layout panel string mirroring your dashboard screenshots exactly
         const dashCardText =
             `🚘 *VEHICLE DETAILS [${regName}]* 🚘\n` +
-            `• Profile: *${vehicleNode?.year || '2026'} ${makeName} ${modelName}*\n` +
+            `• Profile: *${vehicleNode?.year || '2026'} ${makeName} ${makeName.includes(modelName) ? '' : modelName}*\n` +
             `• Class: *STANDARD VEHICLE | REAR-WHEEL DRIVE*\n\n` +
             `📋 *SPECIFICATIONS CONTEXT*:\n` +
             `• Engine Size: *${engineSize}*\n` +
             `• Fuel Classification: *${fuelType}*\n` +
+            `• Fuel Economy Rating: *${fuelEconomyL100km.toFixed(1)} L/100km*\n` +
             `• Tailpipe CO₂ Multiplier: *${vehicleNode?.tailpipe_co2 || '205 g/km'}*\n` +
             `• Carbon Multiplier Key Score: *${vehicleScore.toFixed(6)} kg/km*\n\n` +
             `📊 *TOTAL CARBON SUMMARY HISTORY*:\n` +
             `• Total Logged Trips Count: *${totalTrips} tracked trips*\n` +
             `• Total Distance Driven: *${totalKm.toFixed(1)} KM*\n` +
+            `• *Total Fuel Volume Used: ${totalFuelUsedLitres.toFixed(1)} Litres*\n` +
             `• Average Carbon Yield: *${avgCarbonPerKm.toFixed(4)} kg/km*\n` +
             `• *Total Accumulated Weight: ${totalKg.toFixed(1)} KG (${totalMt.toFixed(4)} Tons)*\n\n` +
             `👉 _Tap the action trigger down below to dispatch a signed compliance audit trail PDF file bundle directly to your profile email inbox account._`;
